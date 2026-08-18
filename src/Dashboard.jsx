@@ -4,20 +4,22 @@ import {
   PieChart, Pie, Cell
 } from 'recharts';
 import { 
-  Settings2, ChevronDown, Calendar as CalendarIcon, User, LogOut, Menu, 
+  Settings2, ChevronDown, Calendar as CalendarIcon, User, LogOut, 
   CreditCard, FileText, ShoppingCart, Calendar, LayoutDashboard, CheckSquare, Filter, ArrowLeft, MoreVertical
 } from 'lucide-react';
 
-// --- FILTER OPTIONS ---
+// --- FILTER OPTIONS (TAMBAH STATUS) ---
 const FILTER_OPTIONS = {
   group: ['All', 'Issuer Kredit', 'Issuer Debit', 'Acq ADC', 'Acq ATM', 'Acq Both', 'Issuer Both', 'Both'],
   klasifikasi: ['All', 'Internasional', 'Transaction Service', 'Lokal Service'],
   principal: ['All', 'Visa', 'Master Card', 'JCB', 'Lokal'],
-  type: ['All', 'Monthly', 'Quarterly', 'Interchange', 'Daily', 'MTI']
+  type: ['All', 'Monthly', 'Quarterly', 'Interchange', 'Daily', 'MTI'],
+  status: ['All', 'Progress', 'Complete', 'Failed'] // <-- Filter baru
 };
 
 const generateDummyTransactions = () => {
   const data = [];
+  const statuses = ['Progress', 'Complete', 'Failed']; // Data dummy acak untuk status
   for (let i = 0; i < 100; i++) {
     data.push({
       id: `2ZN${Math.floor(Math.random() * 90000) + 10000}K`,
@@ -27,7 +29,7 @@ const generateDummyTransactions = () => {
       klasifikasi: FILTER_OPTIONS.klasifikasi[Math.floor(Math.random() * 3) + 1],
       type: FILTER_OPTIONS.type[Math.floor(Math.random() * 5) + 1].toUpperCase(),
       principal: FILTER_OPTIONS.principal[Math.floor(Math.random() * 4) + 1],
-      status: '-'
+      status: statuses[Math.floor(Math.random() * statuses.length)] // <-- Diisi acak
     });
   }
   return data;
@@ -101,7 +103,6 @@ const initialDonutAcquiring = [
   { name: 'Lokal', value: 120, color: '#64748b' },
 ];
 
-// --- CUSTOM TOOLTIP ---
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -122,7 +123,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-// --- CHART LEGEND COMPONENT ---
 const ChartLegend = ({ color, label, isBar }) => (
   <div className="flex flex-col items-center justify-end gap-1.5 hover:opacity-80 transition-opacity cursor-default">
     {isBar ? (
@@ -137,7 +137,6 @@ const ChartLegend = ({ color, label, isBar }) => (
   </div>
 );
 
-// --- REUSABLE TREND CARD COMPONENT (HOME) ---
 const TrendCard = ({ title, iconType, data, hasInterchange, volumeTotal, costTotal, ctvTotal, onClickDetail }) => {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 flex-1 flex flex-col border border-gray-100 group">
@@ -162,7 +161,6 @@ const TrendCard = ({ title, iconType, data, hasInterchange, volumeTotal, costTot
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 25, right: 10, left: 10, bottom: 0 }}>
             <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-            
             <YAxis yAxisId="vol" hide={true} domain={[0, dataMax => Math.max(dataMax * 6.0, 10)]} /> 
             <YAxis yAxisId="ctv" hide={true} domain={[0, dataMax => Math.max(dataMax * 4.0, 5)]} />
             <YAxis yAxisId="int" hide={true} domain={[0, dataMax => Math.max(dataMax * 2.1, 5)]} /> 
@@ -173,17 +171,14 @@ const TrendCard = ({ title, iconType, data, hasInterchange, volumeTotal, costTot
             <Bar yAxisId="vol" dataKey="volume" name="Volume" fill="#3b82f6" barSize={36} radius={[3, 3, 0, 0]} animationDuration={1000}>
               <LabelList dataKey="volume" position="insideBottom" fill="#ffffff" formatter={(val) => `${val} T`} offset={10} fontSize={11} />
             </Bar>
-            
             <Line yAxisId="ctv" type="linear" dataKey="costToVol" name="Cost to Vol" stroke="#cbd5e1" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#94a3b8', strokeWidth: 2 }} activeDot={{ r: 6, strokeWidth: 0, fill: '#94a3b8' }} animationDuration={1000}>
               <LabelList dataKey="costToVol" position="top" fill="#64748b" formatter={(val) => `${val}%`} offset={10} fontSize={11} />
             </Line>
-
             {hasInterchange && (
               <Line yAxisId="int" type="linear" dataKey="interchange" name="Interchange" stroke="#eab308" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#eab308', strokeWidth: 2 }} activeDot={{ r: 6, strokeWidth: 0 }} animationDuration={1000}>
                 <LabelList dataKey="interchange" position="top" fill="#a16207" formatter={(val) => `${val}%`} offset={10} fontSize={11} />
               </Line>
             )}
-            
             <Line yAxisId="sf" type="linear" dataKey="serviceFee" name="Service Fee" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#3b82f6', strokeWidth: 2 }} activeDot={{ r: 6, strokeWidth: 0 }} animationDuration={1000}>
               <LabelList dataKey="serviceFee" position="top" fill="#1e293b" formatter={(val) => `${val} M`} offset={10} fontSize={11} />
             </Line>
@@ -192,39 +187,27 @@ const TrendCard = ({ title, iconType, data, hasInterchange, volumeTotal, costTot
       </div>
 
       <div className="mt-auto pt-6">
-        <div className="bg-gradient-to-r from-[#1e3a8a] to-[#2563eb] text-white text-center py-2.5 rounded-t-xl text-sm font-semibold tracking-wide shadow-inner">
-          {title} 2026
-        </div>
+        <div className="bg-gradient-to-r from-[#1e3a8a] to-[#2563eb] text-white text-center py-2.5 rounded-t-xl text-sm font-semibold tracking-wide shadow-inner">{title} 2026</div>
         <div className="bg-gray-50/80 border border-t-0 border-gray-100 rounded-b-xl p-4 text-[13px] font-medium text-gray-600">
-          <div className="flex justify-between border-b border-gray-200/60 pb-2 mb-2 hover:text-gray-900 transition-colors">
-            <span>Volume</span><span className="font-semibold text-gray-900">{volumeTotal}</span>
-          </div>
-          <div className="flex justify-between border-b border-gray-200/60 pb-2 mb-2 hover:text-gray-900 transition-colors">
-            <span>Cost</span><span className="font-semibold text-gray-900">{costTotal}</span>
-          </div>
-          <div className="flex justify-between pb-1 hover:text-gray-900 transition-colors">
-            <span>Cost To Volume</span><span className="font-semibold text-gray-900">{ctvTotal}</span>
-          </div>
+          <div className="flex justify-between border-b border-gray-200/60 pb-2 mb-2 hover:text-gray-900 transition-colors"><span>Volume</span><span className="font-semibold text-gray-900">{volumeTotal}</span></div>
+          <div className="flex justify-between border-b border-gray-200/60 pb-2 mb-2 hover:text-gray-900 transition-colors"><span>Cost</span><span className="font-semibold text-gray-900">{costTotal}</span></div>
+          <div className="flex justify-between pb-1 hover:text-gray-900 transition-colors"><span>Cost To Volume</span><span className="font-semibold text-gray-900">{ctvTotal}</span></div>
         </div>
       </div>
     </div>
   );
 };
 
-// --- MAIN DASHBOARD APP ---
 export default function Dashboard() {
-  const [currentPage, setCurrentPage] = useState('home'); // 'home', 'debit-detail', 'credit-detail', 'acquiring-detail'
-
+  const [currentPage, setCurrentPage] = useState('home'); 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
-  // Home Chart States
   const [debit, setDebit] = useState(initialDebit);
   const [credit, setCredit] = useState(initialCredit);
   const [acquiring, setAcquiring] = useState(initialAcquiring);
   const [donut, setDonut] = useState(initialDonut);
   
-  // Detail Chart States
   const [debitDetail, setDebitDetail] = useState(initialDebitDetail);
   const [creditDetail, setCreditDetail] = useState(initialCreditDetail);
   const [acquiringDetail, setAcquiringDetail] = useState(initialAcquiringDetail);
@@ -233,11 +216,10 @@ export default function Dashboard() {
   const [donutCredit, setDonutCredit] = useState(initialDonutCredit);
   const [donutAcquiring, setDonutAcquiring] = useState(initialDonutAcquiring);
 
-  // Table States
   const [allTransactions, setAllTransactions] = useState([]);
   const [displayedTransactions, setDisplayedTransactions] = useState([]);
   const [activeDropdown, setActiveDropdown] = useState(null);
-  const [filters, setFilters] = useState({ group: 'All', klasifikasi: 'All', principal: 'All', type: 'All' });
+  const [filters, setFilters] = useState({ group: 'All', klasifikasi: 'All', principal: 'All', type: 'All', status: 'All' });
 
   useEffect(() => {
     const data = generateDummyTransactions();
@@ -254,32 +236,18 @@ export default function Dashboard() {
     if (filters.klasifikasi !== 'All') filtered = filtered.filter(t => t.klasifikasi === filters.klasifikasi);
     if (filters.principal !== 'All') filtered = filtered.filter(t => t.principal === filters.principal);
     if (filters.type !== 'All') filtered = filtered.filter(t => t.type === filters.type.toUpperCase());
+    if (filters.status !== 'All') filtered = filtered.filter(t => t.status === filters.status); // Logika filter status baru
     
     setDisplayedTransactions(filtered);
     closeDropdowns();
   };
 
-  // LOGIC 2: Date Submit (Mengacak semua chart Home & Detail, dan Tabel)
+  // LOGIC 2: Date Submit
   const handleChartSubmit = () => {
     if(!startDate || !endDate) return alert("Pilih Start Date dan End Date dulu ya!");
 
-    // Helper Acak Q1-Q4
-    const randomize4 = (data) => data.map(item => ({
-      ...item,
-      volume: +(Math.random() * 8 + 3).toFixed(1),
-      serviceFee: +(Math.random() * 40 + 90).toFixed(1),
-      costToVol: +(Math.random() * 0.8 + 1.2).toFixed(1),
-      interchange: item.interchange ? +(Math.random() * 0.8 + 1.2).toFixed(1) : undefined
-    }));
-
-    // Helper Acak Q1-Q6
-    const randomize6 = (data) => data.map(item => ({
-      ...item,
-      volume: +(Math.random() * 8 + 3).toFixed(1),
-      serviceFee: +(Math.random() * 40 + 90).toFixed(1),
-      costToVol: +(Math.random() * 0.8 + 1.2).toFixed(1),
-      interchange: item.interchange ? +(Math.random() * 0.8 + 1.2).toFixed(1) : undefined
-    }));
+    const randomize4 = (data) => data.map(item => ({ ...item, volume: +(Math.random() * 8 + 3).toFixed(1), serviceFee: +(Math.random() * 40 + 90).toFixed(1), costToVol: +(Math.random() * 0.8 + 1.2).toFixed(1), interchange: item.interchange ? +(Math.random() * 0.8 + 1.2).toFixed(1) : undefined }));
+    const randomize6 = (data) => data.map(item => ({ ...item, volume: +(Math.random() * 8 + 3).toFixed(1), serviceFee: +(Math.random() * 40 + 90).toFixed(1), costToVol: +(Math.random() * 0.8 + 1.2).toFixed(1), interchange: item.interchange ? +(Math.random() * 0.8 + 1.2).toFixed(1) : undefined }));
 
     setDebit(randomize4(initialDebit));
     setCredit(randomize4(initialCredit));
@@ -294,7 +262,6 @@ export default function Dashboard() {
     setDonutCredit(initialDonutCredit.map(item => ({ ...item, value: Math.floor(Math.random() * 300) + 100 })));
     setDonutAcquiring(initialDonutAcquiring.map(item => ({ ...item, value: Math.floor(Math.random() * 300) + 100 })));
     
-    // Refresh Table Data
     const newData = generateDummyTransactions();
     setAllTransactions(newData);
     let filtered = [...newData];
@@ -302,6 +269,7 @@ export default function Dashboard() {
     if (filters.klasifikasi !== 'All') filtered = filtered.filter(t => t.klasifikasi === filters.klasifikasi);
     if (filters.principal !== 'All') filtered = filtered.filter(t => t.principal === filters.principal);
     if (filters.type !== 'All') filtered = filtered.filter(t => t.type === filters.type.toUpperCase());
+    if (filters.status !== 'All') filtered = filtered.filter(t => t.status === filters.status); // Logika filter status baru
     setDisplayedTransactions(filtered);
   };
 
@@ -314,53 +282,47 @@ export default function Dashboard() {
     }
   };
 
-  // Helper styling untuk item Sidebar Aktif
+  // Helper untuk warna status (Progress, Complete, Failed)
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case 'Complete': return 'text-emerald-600 bg-emerald-50 font-bold';
+      case 'Progress': return 'text-yellow-600 bg-yellow-50 font-bold';
+      case 'Failed': return 'text-red-600 bg-red-50 font-bold';
+      default: return 'text-gray-500';
+    }
+  };
+
   const getSidebarItemStyle = (pageName) => {
     return currentPage === pageName
-      ? "p-2.5 bg-slate-50 text-slate-800 rounded-xl cursor-pointer transition-all shadow-sm ring-1 ring-slate-200"
+      ? "p-2.5 bg-slate-100 text-slate-800 rounded-xl cursor-pointer transition-all shadow-sm ring-1 ring-slate-200"
       : "p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl cursor-pointer transition-all";
   };
 
-  // Setup data aktif berdasarkan Halaman yang dibuka (Untuk Detail View)
   const isDetailView = currentPage !== 'home';
   const detailConfig = {
     'debit-detail': { title: 'DEBIT', iconType: 'debit', chartData: debitDetail, donutData: donutDebit, hasInterchange: false },
     'credit-detail': { title: 'CREDIT', iconType: 'credit', chartData: creditDetail, donutData: donutCredit, hasInterchange: false },
     'acquiring-detail': { title: 'ACQUIRING', iconType: 'acquiring', chartData: acquiringDetail, donutData: donutAcquiring, hasInterchange: true }
-  }[currentPage] || {}; // Fallback empty object saat Home
+  }[currentPage] || {};
 
   return (
     <div className="flex h-screen bg-[#f4f7f9] font-sans overflow-hidden relative">
       
       {activeDropdown && <div className="fixed inset-0 z-40" onClick={closeDropdowns}></div>}
 
-      {/* SIDEBAR DENGAN ROUTING */}
+      {/* SIDEBAR */}
       <div className="w-[88px] fixed h-full flex flex-col items-center py-6 gap-6 bg-transparent z-10">
         <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3 items-center w-14">
-          <div onClick={() => setCurrentPage('home')} className={getSidebarItemStyle('home')}>
-            <LayoutDashboard className="w-5 h-5" strokeWidth={currentPage === 'home' ? 2.5 : 2} />
-          </div>
-          <div onClick={() => setCurrentPage('debit-detail')} className={getSidebarItemStyle('debit-detail')}>
-            <CreditCard className="w-5 h-5" strokeWidth={currentPage === 'debit-detail' ? 2.5 : 2} />
-          </div>
-          <div onClick={() => setCurrentPage('credit-detail')} className={getSidebarItemStyle('credit-detail')}>
-            <FileText className="w-5 h-5" strokeWidth={currentPage === 'credit-detail' ? 2.5 : 2} />
-          </div>
-          <div onClick={() => setCurrentPage('acquiring-detail')} className={getSidebarItemStyle('acquiring-detail')}>
-            <ShoppingCart className="w-5 h-5" strokeWidth={currentPage === 'acquiring-detail' ? 2.5 : 2} />
-          </div>
-          <div className="p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl cursor-pointer transition-all">
-            <Calendar className="w-5 h-5" />
-          </div>
+          <div onClick={() => setCurrentPage('home')} className={getSidebarItemStyle('home')}><LayoutDashboard className="w-5 h-5" strokeWidth={currentPage === 'home' ? 2.5 : 2} /></div>
+          <div onClick={() => setCurrentPage('debit-detail')} className={getSidebarItemStyle('debit-detail')}><CreditCard className="w-5 h-5" strokeWidth={currentPage === 'debit-detail' ? 2.5 : 2} /></div>
+          <div onClick={() => setCurrentPage('credit-detail')} className={getSidebarItemStyle('credit-detail')}><FileText className="w-5 h-5" strokeWidth={currentPage === 'credit-detail' ? 2.5 : 2} /></div>
+          <div onClick={() => setCurrentPage('acquiring-detail')} className={getSidebarItemStyle('acquiring-detail')}><ShoppingCart className="w-5 h-5" strokeWidth={currentPage === 'acquiring-detail' ? 2.5 : 2} /></div>
         </div>
         <div className="mt-auto bg-white p-3 rounded-2xl shadow-sm border border-gray-100 w-14 flex justify-center">
-          <div className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer transition-all">
-            <LogOut className="w-5 h-5" />
-          </div>
+          <div className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer transition-all"><LogOut className="w-5 h-5" /></div>
         </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
       <div className="flex-1 ml-[88px] p-8 overflow-y-auto h-full scroll-smooth">
         
         {/* HEADER */}
@@ -376,14 +338,11 @@ export default function Dashboard() {
                 {!isDetailView ? 'Trend Biaya Principal & Switcher' : `Detail Transaksi - ${detailConfig.title}`}
               </h1>
             </div>
-            <p className="text-sm text-gray-500 mt-1 max-w-4xl font-medium">
-              Peningkatan biaya transaksi principal & switcher seiring dengan pertumbuhan transaksi dan menunjukan tren yang sehat.
-            </p>
+            <p className="text-sm text-gray-500 mt-1 max-w-4xl font-medium">Peningkatan biaya transaksi principal & switcher seiring dengan pertumbuhan transaksi dan menunjukan tren yang sehat.</p>
           </div>
           <div className="flex items-center gap-2.5 bg-white px-4 py-2 rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] cursor-pointer border border-gray-100 hover:bg-gray-50 transition-colors">
             <div className="bg-blue-100 p-1.5 rounded-lg"><User className="w-4 h-4 text-blue-600" /></div>
-            <span className="text-[13px] font-semibold text-gray-700">Admin@gmail.com</span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
+            <span className="text-[13px] font-semibold text-gray-700">Admin@gmail.com</span><ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
           </div>
         </div>
 
@@ -428,20 +387,10 @@ export default function Dashboard() {
                     <YAxis yAxisId="sf"  hide={true} domain={[0, dataMax => Math.max(dataMax * 1.3, 100)]} /> 
                     <XAxis dataKey="name" axisLine={{ stroke: '#e2e8f0', strokeWidth: 1.5 }} tickLine={false} tick={{ dy: 10, fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
                     
-                    <Bar yAxisId="vol" dataKey="volume" name="Volume" fill="#38bdf8" barSize={40} radius={[3, 3, 0, 0]} animationDuration={1000}>
-                      <LabelList dataKey="volume" position="insideBottom" fill="#ffffff" formatter={(val) => `${val} T`} offset={10} fontSize={11} />
-                    </Bar>
-                    <Line yAxisId="ctv" type="linear" dataKey="costToVol" name="Cost To Vol" stroke="#cbd5e1" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#94a3b8', strokeWidth: 2 }} animationDuration={1000}>
-                      <LabelList dataKey="costToVol" position="top" fill="#64748b" formatter={(val) => `${val}%`} offset={10} fontSize={11} />
-                    </Line>
-                    {detailConfig.hasInterchange && (
-                      <Line yAxisId="int" type="linear" dataKey="interchange" name="Interchange" stroke="#eab308" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#eab308', strokeWidth: 2 }} animationDuration={1000}>
-                        <LabelList dataKey="interchange" position="top" fill="#a16207" formatter={(val) => `${val}%`} offset={10} fontSize={11} />
-                      </Line>
-                    )}
-                    <Line yAxisId="sf" type="linear" dataKey="serviceFee" name="Service Fee" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#3b82f6', strokeWidth: 2 }} animationDuration={1000}>
-                      <LabelList dataKey="serviceFee" position="top" fill="#1e293b" formatter={(val) => `${val} M`} offset={10} fontSize={11} />
-                    </Line>
+                    <Bar yAxisId="vol" dataKey="volume" name="Volume" fill="#38bdf8" barSize={40} radius={[3, 3, 0, 0]} animationDuration={1000}><LabelList dataKey="volume" position="insideTop" fill="#ffffff" formatter={(val) => `${val} T`} offset={10} fontSize={11} /></Bar>
+                    <Line yAxisId="ctv" type="linear" dataKey="costToVol" name="Cost To Vol" stroke="#cbd5e1" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#94a3b8', strokeWidth: 2 }} animationDuration={1000}><LabelList dataKey="costToVol" position="top" fill="#64748b" formatter={(val) => `${val}%`} offset={10} fontSize={11} /></Line>
+                    {detailConfig.hasInterchange && <Line yAxisId="int" type="linear" dataKey="interchange" name="Interchange" stroke="#eab308" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#eab308', strokeWidth: 2 }} animationDuration={1000}><LabelList dataKey="interchange" position="top" fill="#a16207" formatter={(val) => `${val}%`} offset={10} fontSize={11} /></Line>}
+                    <Line yAxisId="sf" type="linear" dataKey="serviceFee" name="Service Fee" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4.5, fill: '#ffffff', stroke: '#3b82f6', strokeWidth: 2 }} animationDuration={1000}><LabelList dataKey="serviceFee" position="top" fill="#1e293b" formatter={(val) => `${val} M`} offset={10} fontSize={11} /></Line>
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -449,76 +398,39 @@ export default function Dashboard() {
 
             {/* TENGAH: KARTU BIRU RINGKASAN */}
             <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-              <div className="bg-[#2e5ea8] text-white text-center py-4 text-base font-bold tracking-wide shadow-inner">
-                {detailConfig.title} 2026
-              </div>
+              <div className="bg-[#2e5ea8] text-white text-center py-4 text-base font-bold tracking-wide shadow-inner">{detailConfig.title} 2026</div>
               <div className="p-6 flex flex-col justify-between flex-1 text-sm text-gray-700">
-                <div className="border-b border-gray-200 pb-4 mb-4">
-                  <span className="text-[11px] text-gray-500 font-semibold block mb-1">Volume</span>
-                  <span className="font-bold text-gray-900 text-[13px]">Rp 12.9 T (-4% YoY)</span>
-                </div>
-                <div className="border-b border-gray-200 pb-4 mb-4">
-                  <span className="text-[11px] text-gray-500 font-semibold block mb-1">Cost</span>
-                  <span className="font-bold text-gray-900 text-[13px]">Rp 217 M (-9% YoY)</span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-gray-500 font-semibold block mb-1">Cost To Volume</span>
-                  <span className="font-bold text-gray-900 text-[13px]">1.68% (-9 bps YoY)</span>
-                </div>
+                <div className="border-b border-gray-200 pb-4 mb-4"><span className="text-[11px] text-gray-500 font-semibold block mb-1">Volume</span><span className="font-bold text-gray-900 text-[13px]">Rp 12.9 T (-4% YoY)</span></div>
+                <div className="border-b border-gray-200 pb-4 mb-4"><span className="text-[11px] text-gray-500 font-semibold block mb-1">Cost</span><span className="font-bold text-gray-900 text-[13px]">Rp 217 M (-9% YoY)</span></div>
+                <div><span className="text-[11px] text-gray-500 font-semibold block mb-1">Cost To Volume</span><span className="font-bold text-gray-900 text-[13px]">1.68% (-9 bps YoY)</span></div>
               </div>
             </div>
 
             {/* KANAN: DONUT CHART (HANYA 2 INFO) */}
             <div className="lg:col-span-1 bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col border border-gray-100">
-              <div className="bg-[#1e293b] p-4 text-center text-white">
-                <h2 className="font-semibold text-sm tracking-wide">Universe Biaya Principal</h2>
-                <p className="text-[11px] text-slate-300 mt-0.5 font-medium opacity-80">Januari - Desember 2026</p>
-              </div>
-              
+              <div className="bg-[#1e293b] p-4 text-center text-white"><h2 className="font-semibold text-sm tracking-wide">Universe Biaya Principal</h2><p className="text-[11px] text-slate-300 mt-0.5 font-medium opacity-80">Januari - Desember 2026</p></div>
               <div className="p-5 flex flex-col items-center flex-1">
                 <div className="flex flex-col gap-2 text-[10px] font-semibold text-gray-700 w-full mb-4">
-                  {detailConfig.donutData.map((item) => (
-                    <div key={item.name} className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: item.color }}></div>
-                      <span>{item.name}</span>
-                    </div>
-                  ))}
+                  {detailConfig.donutData.map((item) => (<div key={item.name} className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: item.color }}></div><span>{item.name}</span></div>))}
                 </div>
-
                 <div className="h-36 w-full relative mb-6">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Tooltip content={<CustomTooltip />} />
-                      <Pie data={detailConfig.donutData} innerRadius={45} outerRadius={60} paddingAngle={2} dataKey="value" stroke="none">
-                        {detailConfig.donutData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                      </Pie>
-                    </PieChart>
+                    <PieChart><Tooltip content={<CustomTooltip />} /><Pie data={detailConfig.donutData} innerRadius={45} outerRadius={60} paddingAngle={2} dataKey="value" stroke="none">{detailConfig.donutData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}</Pie></PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-[9px] font-semibold text-gray-400 tracking-wider">TOTAL</span>
-                    <span className="font-bold text-lg text-gray-900 leading-tight">Rp 1,879 M</span>
-                    <span className="text-[9px] font-medium text-gray-400 mt-0.5">(+19% YoY)</span>
-                  </div>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-[9px] font-semibold text-gray-400 tracking-wider">TOTAL</span><span className="font-bold text-lg text-gray-900 leading-tight">Rp 1,879 M</span><span className="text-[9px] font-medium text-gray-400 mt-0.5">(+19% YoY)</span></div>
                 </div>
-
                 <div className="w-full mt-auto">
                   <div className="flex gap-2 mb-4">
                     <div className="flex-1 relative overflow-hidden rounded-lg">
                       <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      <div className="w-full border border-gray-200 bg-white p-2 flex items-center justify-center shadow-sm">
-                        <CalendarIcon className="w-3.5 h-3.5 text-gray-600" />
-                      </div>
+                      <div className="w-full border border-gray-200 bg-white p-2 flex items-center justify-center gap-2 shadow-sm"><CalendarIcon className="w-3.5 h-3.5 text-blue-500" /><span className={`text-[10px] xl:text-xs font-medium ${startDate ? 'text-gray-900' : 'text-gray-500'}`}>{startDate || "Start Date"}</span></div>
                     </div>
                     <div className="flex-1 relative overflow-hidden rounded-lg">
                       <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      <div className="w-full border border-gray-200 bg-white p-2 flex items-center justify-center shadow-sm">
-                        <CalendarIcon className="w-3.5 h-3.5 text-gray-600" />
-                      </div>
+                      <div className="w-full border border-gray-200 bg-white p-2 flex items-center justify-center gap-2 shadow-sm"><CalendarIcon className="w-3.5 h-3.5 text-blue-500" /><span className={`text-[10px] xl:text-xs font-medium ${endDate ? 'text-gray-900' : 'text-gray-500'}`}>{endDate || "End Date"}</span></div>
                     </div>
                   </div>
-                  <button onClick={handleChartSubmit} className="w-full bg-[#6b7280] hover:bg-[#4b5563] text-white py-2.5 rounded-lg font-semibold text-xs transition-all shadow-sm active:scale-[0.98]">
-                    Submit
-                  </button>
+                  <button onClick={handleChartSubmit} className="w-full bg-[#6b7280] hover:bg-[#4b5563] text-white py-2.5 rounded-lg font-semibold text-xs transition-all shadow-sm active:scale-[0.98]">Submit</button>
                 </div>
               </div>
             </div>
@@ -527,17 +439,18 @@ export default function Dashboard() {
 
         {/* ================= BOTTOM SECTION (HOME & DETAILS): TABLE ================= */}
         <div className="flex flex-col xl:flex-row gap-6 mb-8">
-          
-          {/* LEFT: Table (Full width on Details, 2/3 on Home) */}
           <div className={`${isDetailView ? 'flex-[1]' : 'flex-[2]'} bg-white rounded-2xl shadow-sm p-7 border border-gray-100 flex flex-col`}>
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-lg font-bold tracking-tight text-gray-900">Transaction Configuration</h2>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">Manage and classify billing accounts, group methods, and card issuers.</p>
-              </div>
-              
+              <div><h2 className="text-lg font-bold tracking-tight text-gray-900">Transaction Configuration</h2><p className="text-xs text-gray-500 font-medium mt-0.5">Manage and classify billing accounts, group methods, and card issuers.</p></div>
               <div className="flex items-center gap-2 relative z-50">
-                {[{ key: 'group', label: 'Group Mandiri' }, { key: 'klasifikasi', label: 'Klasifikasi' }, { key: 'principal', label: 'Principal' }, { key: 'type', label: 'Type' }].map((f) => (
+                {/* MENU FILTER TABEL - DITAMBAH FILTER STATUS */}
+                {[
+                  { key: 'group', label: 'Group Mandiri' }, 
+                  { key: 'klasifikasi', label: 'Klasifikasi' }, 
+                  { key: 'principal', label: 'Principal' }, 
+                  { key: 'type', label: 'Type' },
+                  { key: 'status', label: 'Status' }
+                ].map((f) => (
                   <div key={f.key} className="relative">
                     <button onClick={() => setActiveDropdown(activeDropdown === f.key ? null : f.key)} className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-semibold transition-all shadow-sm ${activeDropdown === f.key || filters[f.key] !== 'All' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                       <Settings2 className={`w-3.5 h-3.5 ${filters[f.key] !== 'All' ? 'text-blue-600' : 'text-gray-400'}`} /> 
@@ -556,9 +469,7 @@ export default function Dashboard() {
                   </div>
                 ))}
                 <div className="w-px h-6 bg-gray-200 mx-1"></div>
-                <button onClick={handleTableSubmit} className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 text-white border border-gray-900 rounded-lg text-xs font-bold hover:bg-gray-800 transition-all shadow-sm">
-                  <Filter className="w-3.5 h-3.5" /> Apply
-                </button>
+                <button onClick={handleTableSubmit} className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 text-white border border-gray-900 rounded-lg text-xs font-bold hover:bg-gray-800 transition-all shadow-sm"><Filter className="w-3.5 h-3.5" /> Apply</button>
               </div>
             </div>
 
@@ -578,7 +489,8 @@ export default function Dashboard() {
                         <td className="px-5 py-4">{row.klasifikasi}</td>
                         <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getBadgeStyle(row.type)}`}>{row.type}</span></td>
                         <td className="px-5 py-4 font-bold text-gray-900">{row.principal}</td>
-                        <td className="px-5 py-4 text-center text-gray-400"><MoreVertical className="w-4 h-4 mx-auto cursor-pointer" /></td>
+                        {/* STYLE BADGE UNTUK STATUS */}
+                        <td className="px-5 py-4 text-center"><span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wide ${getStatusBadgeStyle(row.status)}`}>{row.status}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -592,46 +504,27 @@ export default function Dashboard() {
           {/* RIGHT: Donut Chart (HANYA MUNCUL DI HOME, DI DETAIL DISEMBUNYIKAN) */}
           {!isDetailView && (
             <div className="flex-[1] bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col border border-gray-100">
-              <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 text-center text-white">
-                <h2 className="font-semibold text-sm tracking-wide">Universe Biaya Principal</h2>
-                <p className="text-[11px] text-slate-300 mt-0.5 font-medium opacity-80">Januari - Desember 2026</p>
-              </div>
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 text-center text-white"><h2 className="font-semibold text-sm tracking-wide">Universe Biaya Principal</h2><p className="text-[11px] text-slate-300 mt-0.5 font-medium opacity-80">Januari - Desember 2026</p></div>
               <div className="p-6 flex flex-col items-center flex-1">
                 <div className="flex gap-4 text-[10px] font-semibold text-gray-600 mb-4 w-full justify-center flex-wrap">
-                  {donut.map((item) => (
-                    <div key={item.name} className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: item.color }}></div><span>{item.name}</span></div>
-                  ))}
+                  {donut.map((item) => (<div key={item.name} className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: item.color }}></div><span>{item.name}</span></div>))}
                 </div>
                 <div className="h-44 w-full relative mb-6">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart><Tooltip content={<CustomTooltip />} /><Pie data={donut} innerRadius={58} outerRadius={74} paddingAngle={2} dataKey="value" stroke="none">{donut.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity outline-none" />)}</Pie></PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-[10px] font-semibold text-gray-400 tracking-wider">TOTAL</span>
-                    <span className="font-bold text-xl text-gray-900 leading-tight">Rp 1,879 M</span>
-                    <span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded mt-1">(+19% YoY)</span>
-                  </div>
+                  <ResponsiveContainer width="100%" height="100%"><PieChart><Tooltip content={<CustomTooltip />} /><Pie data={donut} innerRadius={58} outerRadius={74} paddingAngle={2} dataKey="value" stroke="none">{donut.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity outline-none" />)}</Pie></PieChart></ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-[10px] font-semibold text-gray-400 tracking-wider">TOTAL</span><span className="font-bold text-xl text-gray-900 leading-tight">Rp 1,879 M</span><span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded mt-1">(+19% YoY)</span></div>
                 </div>
                 <div className="w-full mt-auto">
                   <div className="flex gap-3 mb-5">
                     <div className="flex-1 relative overflow-hidden rounded-xl">
                       <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      <div className="w-full border border-gray-200 bg-white p-2.5 flex items-center justify-center gap-2 shadow-sm">
-                        <CalendarIcon className="w-4 h-4 text-blue-500" />
-                        <span className={`text-xs font-medium ${startDate ? 'text-gray-900' : 'text-gray-600'}`}>{startDate || "Start Date"}</span>
-                      </div>
+                      <div className="w-full border border-gray-200 bg-white p-2.5 flex items-center justify-center gap-2 shadow-sm"><CalendarIcon className="w-4 h-4 text-blue-500" /><span className={`text-xs font-medium ${startDate ? 'text-gray-900' : 'text-gray-600'}`}>{startDate || "Start Date"}</span></div>
                     </div>
                     <div className="flex-1 relative overflow-hidden rounded-xl">
                       <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                      <div className="w-full border border-gray-200 bg-white p-2.5 flex items-center justify-center gap-2 shadow-sm">
-                        <CalendarIcon className="w-4 h-4 text-blue-500" />
-                        <span className={`text-xs font-medium ${endDate ? 'text-gray-900' : 'text-gray-600'}`}>{endDate || "End Date"}</span>
-                      </div>
+                      <div className="w-full border border-gray-200 bg-white p-2.5 flex items-center justify-center gap-2 shadow-sm"><CalendarIcon className="w-4 h-4 text-blue-500" /><span className={`text-xs font-medium ${endDate ? 'text-gray-900' : 'text-gray-600'}`}>{endDate || "End Date"}</span></div>
                     </div>
                   </div>
-                  <button onClick={handleChartSubmit} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold text-sm transition-all shadow-md active:scale-[0.98]">
-                    Submit Trend Data
-                  </button>
+                  <button onClick={handleChartSubmit} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-semibold text-sm transition-all shadow-md active:scale-[0.98]">Submit Trend Data</button>
                 </div>
               </div>
             </div>
@@ -640,12 +533,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-      `}</style>
+      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 6px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; border-radius: 8px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }`}</style>
     </div>
   );
 }

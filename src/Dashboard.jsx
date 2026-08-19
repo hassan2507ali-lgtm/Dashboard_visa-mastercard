@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // <-- TAMBAHAN IMPORT ROUTER
+import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
@@ -58,7 +58,7 @@ const generateDummyData = () => {
 const DUMMY_DB = generateDummyData();
 
 const Dashboard = () => {
-  const navigate = useNavigate(); // <-- INISIALISASI FUNGSI NAVIGASI
+  const navigate = useNavigate();
 
   // ==========================================
   // 2. STATE MANAGEMENT
@@ -73,6 +73,9 @@ const Dashboard = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalData, setModalData] = useState([]);
+
+  // --- STATE BARU UNTUK POP-UP PROFILE ---
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const [dashboardData, setDashboardData] = useState({
     summary: { sales: 0, cost: 0, rate: 0, recovery: 0 },
@@ -191,9 +194,8 @@ const Dashboard = () => {
   const handleApply = () => setAppliedFilters({ ...filters });
   const handleLogout = () => alert("Logout berhasil!");
 
-  // FUNGSI NAVIGASI KE PAGE DETAIL COST
   const handleViewDetail = () => {
-    navigate('/detail-cost'); // <-- INI YANG MEMBUATNYA BERPINDAH HALAMAN
+    navigate('/detail-cost');
   };
 
   const openRekonDetail = (statusLabel) => {
@@ -285,7 +287,7 @@ const Dashboard = () => {
       )}
 
       {/* --- SIDEBAR KIRI --- */}
-      <aside className="w-[104px] flex flex-col justify-between items-center py-6 z-10 shrink-0">
+      <aside className="w-[104px] flex flex-col justify-between items-center py-6 z-10 shrink-0 bg-[#f8fafc] border-r border-slate-200/60">
         <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
           <button className="mb-8 text-slate-800 hover:text-blue-600 transition-colors">
             <Menu size={26} strokeWidth={1.5} />
@@ -298,11 +300,35 @@ const Dashboard = () => {
             <button className="text-slate-400 hover:text-blue-600 transition-colors" title="Calendar"><CalendarIcon size={24} strokeWidth={1.5} /></button>
           </nav>
         </div>
-        <div className="flex flex-col gap-4">
-          <button className="bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-slate-50 transition-colors relative" title="Profile">
-            <User size={22} strokeWidth={1.5} />
-            <ChevronUp size={14} strokeWidth={2} className="absolute top-2 right-1 text-slate-400" />
-          </button>
+        
+        {/* PROFILE & LOGOUT SECTION */}
+        <div className="flex flex-col gap-4 relative">
+          
+          {/* PROFILE BUTTON DENGAN POP-UP */}
+          <div className="relative flex justify-center">
+            <button 
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`} 
+              title="Profile"
+            >
+              <User size={22} strokeWidth={1.5} />
+              <ChevronUp size={14} strokeWidth={2} className={`absolute top-2 right-1 text-slate-400 transition-transform duration-300 ${isProfileOpen ? 'rotate-180 text-blue-500' : ''}`} />
+            </button>
+
+            {/* POP-UP PROFILE KESAMPING */}
+            {isProfileOpen && (
+              <div className="absolute left-[calc(100%+16px)] bottom-0 w-56 bg-white border border-slate-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-4 z-50 flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0">
+                  <User size={20} strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="text-[14px] font-bold text-slate-800 leading-tight">Hassan Ali</p>
+                  <p className="text-[12px] text-slate-500 font-medium">Administrator</p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button onClick={handleLogout} className="bg-white rounded-[1.25rem] w-14 h-14 flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-rose-50 hover:border-rose-100 hover:text-rose-600 transition-colors" title="Logout">
             <LogOut size={22} strokeWidth={1.5} className="transform rotate-180" />
           </button>
@@ -310,7 +336,7 @@ const Dashboard = () => {
       </aside>
 
       {/* --- KONTEN DASBOR UTAMA --- */}
-      <main className="flex-1 flex flex-col h-screen overflow-x-hidden overflow-y-auto px-4 py-8">
+      <main className="flex-1 flex flex-col h-screen overflow-x-hidden overflow-y-auto px-4 py-8" onClick={() => setIsProfileOpen(false)}>
         
         {/* Header & Filter */}
         <header className="flex justify-between items-end mb-8 px-2">
@@ -321,7 +347,7 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2.5 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
               <CalendarIcon size={18} strokeWidth={1.5} className="text-slate-400" />
               <input type="date" className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent cursor-pointer" value={filters.startDate} onChange={(e) => setFilters({...filters, startDate: e.target.value})} />
@@ -342,7 +368,7 @@ const Dashboard = () => {
               <ChevronDown size={16} strokeWidth={1.5} className="text-slate-400 absolute right-3.5 pointer-events-none" />
             </div>
             <button onClick={handleApply} className="bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all active:scale-[0.97] shadow-sm flex items-center justify-center">
-              Apply
+              Apply Filter
             </button>
           </div>
         </header>
@@ -375,7 +401,6 @@ const Dashboard = () => {
 
           {/* --- BARIS 2: 2 GRAFIK BESAR --- */}
           <div className="col-span-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[380px]">
-            {/* Header Grafik dengan Tombol View Detail (Desain Baru) */}
             <div className="flex justify-between items-center mb-2">
               <h3 className="font-bold text-slate-800 tracking-tight text-lg">Sales Volume vs Principal Cost by {chartTimeLabel}</h3>
               <button 

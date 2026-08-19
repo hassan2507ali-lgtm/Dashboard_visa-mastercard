@@ -279,14 +279,14 @@ const DetailCost = () => {
           {/* BANNER BIRU KEPALA */}
           <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md overflow-hidden">
             <div className="shrink-0 flex items-center">
-              <img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-5 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" />
+              <img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-6 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" />
             </div>
             <div className="text-center flex-1 px-4 hidden md:block mt-1">
               <h2 className="text-white text-base lg:text-[18px] font-bold tracking-wide uppercase leading-none">Dashboard Principal Fee eChannel Transaction</h2>
               <p className="text-white text-[10px] lg:text-[11px] font-light mt-1 opacity-90 tracking-widest italic leading-none">ELECTRONIC CHANNEL OPERATIONS GROUP</p>
             </div>
             <div className="shrink-0 flex items-center">
-              <img src={LogoDanantara} alt="Danantara" className="h-12 sm:h-10 scale-[2] sm:scale-[2.5] transform origin-right object-contain" />
+              <img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" />
             </div>
           </div>
 

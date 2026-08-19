@@ -7,6 +7,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { 
+
+
   ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart 
 } from 'recharts';
@@ -283,7 +285,7 @@ const Dashboard = () => {
             </button>
             {isProfileOpen && (
               <div className="absolute left-[calc(100%+16px)] bottom-0 w-56 bg-white border border-slate-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-4 z-50 flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
-                <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0"><User size={20} strokeWidth={2} /></div>
+                <div className="w-5 h-5 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0"><User size={20} strokeWidth={2} /></div>
                 <div><p className="text-[14px] font-bold text-slate-800 leading-tight">Mandiri</p><p className="text-[12px] text-slate-500 font-medium">Administrator</p></div>
               </div>
             )}
@@ -304,12 +306,12 @@ const Dashboard = () => {
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
           
           <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md">
-            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-8 sm:h-10 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
+            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-5 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
             <div className="text-center flex-1 px-4 hidden md:block mt-1">
               <h2 className="text-white text-base lg:text-[18px] font-bold tracking-wide uppercase leading-none">Dashboard Principal Fee eChannel Transaction</h2>
               <p className="text-white text-[10px] lg:text-[11px] font-light mt-1 opacity-90 tracking-widest italic leading-none">ELECTRONIC CHANNEL OPERATIONS GROUP</p>
             </div>
-            <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-8 sm:h-10 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
+            <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
           <header className="flex flex-col xl:flex-row justify-between items-start mb-8 gap-5">

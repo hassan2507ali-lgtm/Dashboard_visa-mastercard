@@ -450,6 +450,21 @@ const Dashboard = () => {
                 />
               </div>
 
+             {/* --- FILTER VIEW TYPE --- */}
+              <div className="relative flex items-center w-full sm:w-auto">
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
+                  <Filter size={18} className="text-slate-400 shrink-0" />
+                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
+                    <option value="monthly">Principal</option>
+                    <option value="quarterly">Visa</option>
+                    <option value="yearly">Master Card</option>
+                    <option value="yearly">JCB</option>
+                    <option value="yearly">JCB</option>
+                  </select>
+                  <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
+                </div>
+              </div>
+
               {/* --- FILTER VIEW TYPE --- */}
               <div className="relative flex items-center w-full sm:w-auto">
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">

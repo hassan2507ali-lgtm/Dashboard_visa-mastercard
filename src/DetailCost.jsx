@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, 
-  Filter, Settings2, X
+  Filter, Settings2, X, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { 
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
@@ -61,9 +61,8 @@ const generateTableData = () => {
 
   for (let i = 0; i < 75; i++) {
     const rateCur = currencies[Math.floor(Math.random() * currencies.length)];
-    // Random amount antara 1 juta - 50 juta
     const rawAmount = (Math.random() * 50000000) + 1000000;
-    const eqvIdr = rateCur === 'USD' ? rawAmount * 15500 : rawAmount; // Jika USD konversi kasar ke IDR
+    const eqvIdr = rateCur === 'USD' ? rawAmount * 15500 : rawAmount;
 
     data.push({
       id: i,
@@ -119,12 +118,15 @@ const DetailCost = () => {
   });
   const [chartData, setChartData] = useState([]);
 
-  // State untuk tabel disesuaikan dengan kolom yang baru
   const [tableFilters, setTableFilters] = useState({
     type: 'All', principal: 'All', group: 'All', month: 'All', rateCur: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
+
+  // --- STATE PAGINATION ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -170,7 +172,7 @@ const DetailCost = () => {
   }, [chartFilters]);
 
   // ==========================================
-  // 5. LOGIKA FILTERING TABEL
+  // 5. LOGIKA FILTERING & RESET HALAMAN TABEL
   // ==========================================
   useEffect(() => {
     const result = TABLE_DB.filter(row => {
@@ -183,17 +185,20 @@ const DetailCost = () => {
       return passType && passPrincipal && passGroup && passMonth && passRateCur;
     });
     setFilteredTableData(result);
+    setCurrentPage(1); // Reset ke halaman 1 setiap kali filter diterapkan
   }, [appliedTableFilters]);
 
   const handleApplyTableFilter = () => {
     setAppliedTableFilters({ ...tableFilters });
   };
 
+  // Logika Data yang akan dirender di halaman aktif
+  const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentTableData = filteredTableData.slice(startIndex, startIndex + itemsPerPage);
+
   const handleLogout = () => alert("Logout berhasil!");
 
-  // ==========================================
-  // 6. HELPER COMPONENTS (Pills Warna Warni)
-  // ==========================================
   const getBadgeType = (type) => {
     if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
     if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
@@ -215,10 +220,9 @@ const DetailCost = () => {
         onClick={() => setIsMobileMenuOpen(false)}
       ></div>
 
-      {/* --- SIDEBAR KIRI (Profesional & Melayang di Mobile) --- */}
+      {/* --- SIDEBAR KIRI --- */}
       <aside className={`fixed md:relative z-50 left-0 top-0 h-full bg-transparent md:bg-[#f8fafc] border-none md:border-r border-slate-200/60 transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-[100px] md:w-[104px] flex flex-col justify-between items-center py-6 sm:py-8 shrink-0`}>
         
-        {/* Kapsul Menu Navigasi */}
         <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border border-slate-100/50 md:border-slate-100">
           <button className="md:hidden mb-8 text-slate-400 hover:text-blue-600 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
             <X size={26} strokeWidth={1.5} />
@@ -230,10 +234,7 @@ const DetailCost = () => {
           </nav>
         </div>
         
-        {/* Kapsul Profile & Logout */}
         <div className="flex flex-col gap-4 relative">
-          
-          {/* PROFILE BUTTON DENGAN POP-UP */}
           <div className="relative flex justify-center">
             <button 
               onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -244,7 +245,6 @@ const DetailCost = () => {
               <ChevronUp size={14} strokeWidth={2} className={`absolute top-2 right-1 text-slate-400 transition-transform duration-300 ${isProfileOpen ? 'rotate-180 text-blue-500' : ''}`} />
             </button>
 
-            {/* POP-UP PROFILE KESAMPING */}
             {isProfileOpen && (
               <div className="absolute left-[calc(100%+16px)] bottom-0 w-56 bg-white border border-slate-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-4 z-50 flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
                 <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0">
@@ -391,10 +391,8 @@ const DetailCost = () => {
             <div className="flex flex-col lg:flex-row justify-between items-start px-6 py-6 border-b border-slate-100 gap-5">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 tracking-tight">Detail Billing</h2>
-                
               </div>
 
-              {/* Wrapper Flex-Col untuk meletakkan tombol di bawah deretan filter baru */}
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                 <div className="flex flex-wrap items-center justify-end gap-2 w-full">
                   
@@ -469,48 +467,31 @@ const DetailCost = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredTableData.length > 0 ? (
-                    filteredTableData.map((row, idx) => (
+                  {currentTableData.length > 0 ? (
+                    currentTableData.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
                         
-                        {/* TYPE (Pake Badge / Kapsul agar UI tetap cantik) */}
                         <td className="py-4 px-5">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.type)}`}>
                             {row.type}
                           </span>
                         </td>
                         
-                        {/* PRINCIPAL */}
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
-                        
-                        {/* GROUP */}
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
-                        
-                        {/* MONTH */}
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.month}</td>
-                        
-                        {/* BILLING LINE */}
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
-                        
-                        {/* DESCRIPTION */}
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
                           {row.description}
                         </td>
-                        
-                        {/* RATE CUR */}
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.rateCur === 'USD' ? 'text-emerald-600' : 'text-slate-700'}`}>{row.rateCur}</td>
                         
-                        {/* BILLING CURRENCY */}
                         <td className="py-4 px-5 text-[13px] font-semibold text-slate-600 text-right">
                           {formatDecimal(row.billingCurrency)}
                         </td>
-                        
-                        {/* TOTAL */}
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.total)}
                         </td>
-                        
-                        {/* EQV IDR */}
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.eqvIdr)}
                         </td>
@@ -526,6 +507,35 @@ const DetailCost = () => {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* --- FOOTER PAGINATION --- */}
+            <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 border-t border-slate-100 gap-4 bg-white">
+              <p className="text-[13px] text-slate-500 font-medium">
+                Showing <span className="font-bold text-slate-700">{filteredTableData.length > 0 ? startIndex + 1 : 0}</span> to <span className="font-bold text-slate-700">{Math.min(startIndex + itemsPerPage, filteredTableData.length)}</span> of <span className="font-bold text-slate-700">{filteredTableData.length}</span> entries
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-[12px] font-bold text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  <ChevronLeft size={14} /> Previous
+                </button>
+
+                <div className="px-3 py-1 text-[13px] font-bold text-slate-700 bg-slate-100 rounded-lg">
+                  {currentPage} / {totalPages || 1}
+                </div>
+
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 rounded-lg text-[12px] font-bold text-slate-600 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
 
           </div>

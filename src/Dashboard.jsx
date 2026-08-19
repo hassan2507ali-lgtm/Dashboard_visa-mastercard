@@ -16,7 +16,7 @@ import LogoMandiri from './mandiri.png';
 import LogoDanantara from './danatara.png';
 
 // ==========================================
-// 1. GENERATE DUMMY DATABASE MASIF
+// 1. GENERATE DUMMY DATABASE MASIF DENGAN VARIANSI TINGGI
 // ==========================================
 const generateDummyData = () => {
   const data = [];
@@ -25,17 +25,23 @@ const generateDummyData = () => {
   
   let i = 0;
   while (currentDate <= endDate) {
-    const numTrx = Math.floor(Math.random() * 3) + 1;
+    const numTrx = Math.floor(Math.random() * 20) + 1; 
+    const dailyBias = Math.random(); 
+
     for(let j=0; j < numTrx; j++) {
       const typeRand = Math.random();
       const type = typeRand > 0.55 ? 'Visa' : (typeRand > 0.15 ? 'Mastercard' : 'Others');
       
-      const groupRand = Math.random();
-      const groupName = groupRand > 0.6 ? 'Credit Card' : (groupRand > 0.25 ? 'Debit Card' : 'Acquiring');
+      let groupName = '';
+      if (dailyBias > 0.7) {
+        groupName = Math.random() > 0.3 ? 'Credit Card' : 'Acquiring';
+      } else if (dailyBias < 0.3) {
+        groupName = Math.random() > 0.3 ? 'Debit Card' : 'Acquiring';
+      } else {
+        groupName = Math.random() > 0.5 ? 'Acquiring' : (Math.random() > 0.5 ? 'Credit Card' : 'Debit Card');
+      }
       
-      // Tambahkan subGroup khusus untuk Acquiring (Interchange / Service)
-      // Untuk Credit & Debit otomatis akan dianggap Service di logika agregasi nanti
-      const subGroup = groupName === 'Acquiring' ? (Math.random() > 0.5 ? 'Interchange' : 'Service') : null;
+      const subGroup = groupName === 'Acquiring' ? (Math.random() > 0.4 ? 'Interchange' : 'Service') : null;
 
       const statusRand = Math.random();
       let status = '';
@@ -46,12 +52,14 @@ const generateDummyData = () => {
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-      // Variasi principalCost diperbesar agar bar terlihat lebih dinamis / gerak-gerak
+      const baseCost = Math.random() * 5 + 0.5; 
+      const spikeMultiplier = Math.random() > 0.85 ? 3 : 1; 
+
       data.push({
         id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
         date: dateString, principal: type, group: groupName, subGroup: subGroup, status: status,
-        salesVolume: Math.random() * 8 + 2, 
-        principalCost: Number((Math.random() * 0.08 + 0.02).toFixed(3)), 
+        salesVolume: Math.random() * 15 + 5, 
+        principalCost: Number((baseCost * spikeMultiplier).toFixed(3)), 
         costRate: Number((Math.random() * 0.01 + 0.035).toFixed(3)),
         merchant: `Merchant ${String.fromCharCode(65 + (i % 5))}`,
       });
@@ -128,7 +136,6 @@ const Dashboard = () => {
     let totalSales = 0, totalCost = 0, totalRate = 0;
     let visaCost = 0, mcCost = 0, othersCost = 0, visaVol = 0, mcVol = 0, othersVol = 0;
     
-    // Siapkan variabel total untuk group (Sekarang Credit & Debit masuk ke Service murni)
     let creditService = 0, debitService = 0, acqInterchange = 0, acqService = 0;
     
     const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0 };
@@ -143,7 +150,6 @@ const Dashboard = () => {
       else if (item.principal === 'Mastercard') { mcCost += item.principalCost; mcVol += item.salesVolume; }
       else { othersCost += item.principalCost; othersVol += item.salesVolume; }
       
-      // Agregasi Data berdasarkan Group & SubGroup
       if (item.group === 'Credit Card') creditService += item.principalCost; 
       else if (item.group === 'Debit Card') debitService += item.principalCost; 
       else if (item.group === 'Acquiring') {
@@ -209,17 +215,16 @@ const Dashboard = () => {
         mc: { cost: mcCost.toFixed(2), rate: (mcCost/mcVol || 0).toFixed(3), pct: Math.round((mcCost/totalCost)*100) || 0 },
         others: { cost: othersCost.toFixed(2), rate: (othersCost/othersVol || 0).toFixed(3), pct: Math.round((othersCost/totalCost)*100) || 0 }
       },
-      // Data grup disiapkan hanya untuk Interchange dan Service
       groupStats: [
         {
           name: 'Credit Card', 
-          interchange: 0, // 0 Karena hanya service
+          interchange: 0, 
           service: Number(creditService.toFixed(2)),
           totalSort: Number(creditService.toFixed(2))
         }, 
         {
           name: 'Debit Card', 
-          interchange: 0, // 0 Karena hanya service
+          interchange: 0, 
           service: Number(debitService.toFixed(2)),
           totalSort: Number(debitService.toFixed(2))
         }, 
@@ -270,8 +275,6 @@ const Dashboard = () => {
   const customTooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '13px', fontWeight: '500', color: '#334155' };
   const chartTimeLabel = appliedFilters.type === 'monthly' ? 'Month' : appliedFilters.type === 'quarterly' ? 'Quarter' : 'Year';
 
-  // --- KUSTOM TOOLTIP UNTUK BAR COST BY GROUP ---
-  // Diubah agar pop up membedakan kartu (hanya service) dan Acquiring (keduanya)
   const CustomGroupTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -506,7 +509,7 @@ const Dashboard = () => {
               </div>
             </div>
             
-            {/* CHART 2: COST TRANSACTION */}
+            {/* CHART 2: COST TRANSACTION (DIKEMBALIKAN KE WARNA ABU-ABU & KUNING) */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost Transaction</h3>
               <div className="flex-1 w-full -ml-4 sm:ml-0">
@@ -555,7 +558,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* CHART 4: COST BY GROUP (STACKED BAR HANYA DENGAN ABU-ABU DAN KUNING) */}
+            {/* CHART 4: COST BY GROUP (WARNA BIRU & KUNING) */}
             <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-2 flex justify-center sm:justify-start gap-1.5 items-center">
                 Cost by Group <span className="text-[12px] text-slate-400 font-medium">(Rp B)</span>
@@ -569,8 +572,8 @@ const Dashboard = () => {
                     <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomGroupTooltip />} />
                     <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    {/* Bar Bertumpuk Hanya Untuk Interchange dan Service */}
-                    <Bar dataKey="interchange" name="Interchange" stackId="a" fill="#94a3b8" barSize={20} />
+                    {/* Interchange (Biru), Service (Kuning) */}
+                    <Bar dataKey="interchange" name="Interchange" stackId="a" fill="#2563eb" barSize={20} />
                     <Bar dataKey="service" name="Service" stackId="a" fill="#fde047" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

@@ -47,27 +47,49 @@ const generateChartData = () => {
 const CHART_DB = generateChartData();
 
 // ==========================================
-// 2. DUMMY DATA UNTUK TABEL TRANSACTION CONFIG
+// 2. GENERATE DUMMY DATA UNTUK TABEL BARU
 // ==========================================
-const TABLE_DB = [
-  { id: '2ZN80637K', group: 'Issuer Debit', desc: '-', periode: '-', class: 'Transaction Service', type: 'DAILY', principal: 'Lokal', status: 'PROGRESS' },
-  { id: '2ZN34257K', group: 'Issuer Kredit', desc: '-', periode: '-', class: 'International', type: 'MONTHLY', principal: 'Visa', status: 'COMPLETE' },
-  { id: '2ZN62578K', group: 'Both', desc: '-', periode: '-', class: 'Transaction Service', type: 'QUARTERLY', principal: 'Master Card', status: 'PROGRESS' },
-  { id: '2ZN74208K', group: 'Acq EDC', desc: '-', periode: '-', class: 'Transaction Service', type: 'QUARTERLY', principal: 'Lokal', status: 'FAILED' },
-  { id: '2ZN63566K', group: 'Issuer Kredit', desc: '-', periode: '-', class: 'International', type: 'INTERCHANGE', principal: 'Master Card', status: 'PROGRESS' },
-  { id: '2ZN34188K', group: 'Both', desc: '-', periode: '-', class: 'Transaction Service', type: 'INTERCHANGE', principal: 'JCB', status: 'COMPLETE' },
-  { id: '2ZN93789K', group: 'Acq ATM', desc: '-', periode: '-', class: 'Transaction Service', type: 'DAILY', principal: 'Visa', status: 'COMPLETE' },
-  { id: '2ZN11223K', group: 'Acq Both', desc: '-', periode: '-', class: 'International', type: 'MTI', principal: 'Visa', status: 'PROGRESS' },
-  { id: '2ZN44556K', group: 'Issuer Both', desc: '-', periode: '-', class: 'Transaction Service', type: 'MONTHLY', principal: 'Master Card', status: 'FAILED' },
-  { id: '2ZN77889K', group: 'Both', desc: '-', periode: '-', class: 'Transaction Service', type: 'DAILY', principal: 'Lokal', status: 'COMPLETE' },
-];
+const generateTableData = () => {
+  const data = [];
+  const types = ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'];
+  const principals = ['Visa', 'Mastercard', 'JCB', 'Lokal'];
+  const groups = ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'];
+  const months = ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'];
+  const billingLines = ['2LS2000', '2ZN80637K', '3AM55021X', '9PQ11002A', '5TR90011B'];
+  const descs = ['SMS Acquirer Non-Local Currency Fee', 'International ATM Inquiry', 'Cross Border Fee', 'Domestic Settlement', 'Monthly Maintenance Fee'];
+  const currencies = ['IDR', 'USD'];
+
+  for (let i = 0; i < 75; i++) {
+    const rateCur = currencies[Math.floor(Math.random() * currencies.length)];
+    // Random amount antara 1 juta - 50 juta
+    const rawAmount = (Math.random() * 50000000) + 1000000;
+    const eqvIdr = rateCur === 'USD' ? rawAmount * 15500 : rawAmount; // Jika USD konversi kasar ke IDR
+
+    data.push({
+      id: i,
+      type: types[Math.floor(Math.random() * types.length)],
+      principal: principals[Math.floor(Math.random() * principals.length)],
+      group: groups[Math.floor(Math.random() * groups.length)],
+      month: months[Math.floor(Math.random() * months.length)],
+      billingLine: billingLines[Math.floor(Math.random() * billingLines.length)],
+      description: descs[Math.floor(Math.random() * descs.length)],
+      rateCur: rateCur,
+      billingCurrency: rawAmount,
+      total: rawAmount,
+      eqvIdr: eqvIdr
+    });
+  }
+  return data;
+};
+
+const TABLE_DB = generateTableData();
 
 const FILTER_OPTIONS = {
-  group: ['Issuer Kredit', 'Issuer Debit', 'Acq EDC', 'Acq ATM', 'Acq Both', 'Issuer Both', 'Both'],
-  klasifikasi: ['International', 'Transaction Service'],
-  principal: ['Visa', 'Master Card', 'JCB', 'Lokal'],
-  type: ['MONTHLY', 'QUARTERLY', 'INTERCHANGE', 'DAILY', 'MTI'],
-  status: ['PROGRESS', 'COMPLETE', 'FAILED']
+  type: ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'],
+  principal: ['Visa', 'Mastercard', 'JCB', 'Lokal'],
+  group: ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'],
+  month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'],
+  rateCur: ['IDR', 'USD']
 };
 
 const formatCurrency = (value) => {
@@ -82,6 +104,10 @@ const formatBilling = (value) => {
   return value.toString();
 };
 
+const formatDecimal = (num) => {
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 const DetailCost = () => {
   const navigate = useNavigate();
 
@@ -93,13 +119,13 @@ const DetailCost = () => {
   });
   const [chartData, setChartData] = useState([]);
 
+  // State untuk tabel disesuaikan dengan kolom yang baru
   const [tableFilters, setTableFilters] = useState({
-    group: 'All', klasifikasi: 'All', principal: 'All', type: 'All', status: 'All'
+    type: 'All', principal: 'All', group: 'All', month: 'All', rateCur: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
 
-  // --- STATE MENU MOBILE & POP-UP PROFILE ---
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -148,13 +174,13 @@ const DetailCost = () => {
   // ==========================================
   useEffect(() => {
     const result = TABLE_DB.filter(row => {
-      const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
-      const passClass = appliedTableFilters.klasifikasi === 'All' || row.class === appliedTableFilters.klasifikasi;
-      const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
       const passType = appliedTableFilters.type === 'All' || row.type === appliedTableFilters.type;
-      const passStatus = appliedTableFilters.status === 'All' || row.status === appliedTableFilters.status;
+      const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
+      const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
+      const passMonth = appliedTableFilters.month === 'All' || row.month === appliedTableFilters.month;
+      const passRateCur = appliedTableFilters.rateCur === 'All' || row.rateCur === appliedTableFilters.rateCur;
 
-      return passGroup && passClass && passPrincipal && passType && passStatus;
+      return passType && passPrincipal && passGroup && passMonth && passRateCur;
     });
     setFilteredTableData(result);
   }, [appliedTableFilters]);
@@ -166,26 +192,13 @@ const DetailCost = () => {
   const handleLogout = () => alert("Logout berhasil!");
 
   // ==========================================
-  // 6. HELPER COMPONENTS (Pills)
+  // 6. HELPER COMPONENTS (Pills Warna Warni)
   // ==========================================
   const getBadgeType = (type) => {
-    switch(type) {
-      case 'DAILY': return 'bg-emerald-100 text-emerald-700';
-      case 'MONTHLY': return 'bg-blue-100 text-blue-700';
-      case 'QUARTERLY': return 'bg-purple-100 text-purple-700';
-      case 'INTERCHANGE': return 'bg-slate-100 text-slate-700';
-      case 'MTI': return 'bg-teal-100 text-teal-700';
-      default: return 'bg-gray-100 text-gray-700';
-    }
-  };
-
-  const getBadgeStatus = (status) => {
-    switch(status) {
-      case 'PROGRESS': return 'bg-amber-100 text-amber-700';
-      case 'COMPLETE': return 'bg-emerald-100 text-emerald-700';
-      case 'FAILED': return 'bg-rose-100 text-rose-700';
-      default: return 'bg-gray-100 text-gray-700';
-    }
+    if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
+    if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
+    if (type.includes('License')) return 'bg-blue-100 text-blue-700';
+    return 'bg-purple-100 text-purple-700';
   };
 
   const isDaily = chartFilters.timeView === 'Daily';
@@ -207,7 +220,6 @@ const DetailCost = () => {
         
         {/* Kapsul Menu Navigasi */}
         <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border border-slate-100/50 md:border-slate-100">
-          {/* Tombol X (Tutup) khusus Mobile */}
           <button className="md:hidden mb-8 text-slate-400 hover:text-blue-600 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
             <X size={26} strokeWidth={1.5} />
           </button>
@@ -376,45 +388,17 @@ const DetailCost = () => {
           {/* SECTION 3: TRANSACTION CONFIGURATION TABLE */}
           <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden mb-10">
             
-            {/* BAGIAN HEADER & FILTER TABEL YANG SUDAH DIUPDATE */}
             <div className="flex flex-col lg:flex-row justify-between items-start px-6 py-6 border-b border-slate-100 gap-5">
               <div>
-                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Transaction Configuration</h2>
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Detail Billing</h2>
                 <p className="text-[13px] text-slate-500 font-medium mt-1">Manage and classify billing accounts, group methods, and card issuers.</p>
               </div>
 
-              {/* Wrapper Flex-Col untuk meletakkan tombol di bawah deretan filter */}
+              {/* Wrapper Flex-Col untuk meletakkan tombol di bawah deretan filter baru */}
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
-                
                 <div className="flex flex-wrap items-center justify-end gap-2 w-full">
-                  {/* Filters Dropdown */}
-                  <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.group} onChange={(e) => setTableFilters({...tableFilters, group: e.target.value})}>
-                      <option value="All">Group Mandiri</option>
-                      {FILTER_OPTIONS.group.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                  </div>
-
-                  <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.klasifikasi} onChange={(e) => setTableFilters({...tableFilters, klasifikasi: e.target.value})}>
-                      <option value="All">Klasifikasi</option>
-                      {FILTER_OPTIONS.klasifikasi.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                  </div>
-
-                  <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
-                      <option value="All">Principal</option>
-                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                  </div>
-
+                  
+                  {/* Filter Type */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
                     <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.type} onChange={(e) => setTableFilters({...tableFilters, type: e.target.value})}>
@@ -424,14 +408,46 @@ const DetailCost = () => {
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
+                  {/* Filter Principal */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.status} onChange={(e) => setTableFilters({...tableFilters, status: e.target.value})}>
-                      <option value="All">Status</option>
-                      {FILTER_OPTIONS.status.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
+                      <option value="All">Principal</option>
+                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
+
+                  {/* Filter Group */}
+                  <div className="relative flex items-center">
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.group} onChange={(e) => setTableFilters({...tableFilters, group: e.target.value})}>
+                      <option value="All">Group</option>
+                      {FILTER_OPTIONS.group.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
+                  {/* Filter Month */}
+                  <div className="relative flex items-center">
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.month} onChange={(e) => setTableFilters({...tableFilters, month: e.target.value})}>
+                      <option value="All">Month</option>
+                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
+                  {/* Filter Rate Cur */}
+                  <div className="relative flex items-center">
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.rateCur} onChange={(e) => setTableFilters({...tableFilters, rateCur: e.target.value})}>
+                      <option value="All">Rate Cur</option>
+                      {FILTER_OPTIONS.rateCur.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
                 </div>
 
                 <button onClick={handleApplyTableFilter} className="flex items-center gap-1.5 px-6 py-2 bg-[#111827] hover:bg-black text-white rounded-lg text-[12px] font-bold shadow-sm transition-all active:scale-95">
@@ -442,11 +458,11 @@ const DetailCost = () => {
             </div>
 
             <div className="w-full overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[1000px]">
+              <table className="w-full text-left border-collapse min-w-[1300px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['ID BILLING', 'GROUP MANDIRI', 'DESKRIPSI', 'PERIODE', 'KLASIFIKASI', 'TYPE', 'PRINCIPAL', 'STATUS REKON'].map(head => (
-                      <th key={head} className="py-4 px-6 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
+                    {['TYPE', 'PRINCIPAL', 'GROUP', 'MONTH', 'BILLING LINE', 'DESCRIPTION', 'RATE CUR', 'BILLING CURRENCY', 'TOTAL', 'EQV IDR'].map(head => (
+                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head.includes('CURRENCY') || head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
                         {head}
                       </th>
                     ))}
@@ -456,27 +472,54 @@ const DetailCost = () => {
                   {filteredTableData.length > 0 ? (
                     filteredTableData.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
-                        <td className="py-4 px-6 text-[13px] font-bold text-slate-800">{row.id}</td>
-                        <td className={`py-4 px-6 text-[13px] font-bold ${row.group.includes('Issuer') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
-                        <td className="py-4 px-6 text-[13px] font-medium text-slate-400">{row.desc}</td>
-                        <td className="py-4 px-6 text-[13px] font-medium text-slate-400">{row.periode}</td>
-                        <td className="py-4 px-6 text-[13px] font-medium text-slate-600">{row.class}</td>
-                        <td className="py-4 px-6">
+                        
+                        {/* TYPE (Pake Badge / Kapsul agar UI tetap cantik) */}
+                        <td className="py-4 px-5">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.type)}`}>
                             {row.type}
                           </span>
                         </td>
-                        <td className="py-4 px-6 text-[13px] font-bold text-slate-800">{row.principal}</td>
-                        <td className="py-4 px-6">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeStatus(row.status)}`}>
-                            {row.status}
-                          </span>
+                        
+                        {/* PRINCIPAL */}
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
+                        
+                        {/* GROUP */}
+                        <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
+                        
+                        {/* MONTH */}
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.month}</td>
+                        
+                        {/* BILLING LINE */}
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
+                        
+                        {/* DESCRIPTION */}
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
+                          {row.description}
                         </td>
+                        
+                        {/* RATE CUR */}
+                        <td className={`py-4 px-5 text-[13px] font-bold ${row.rateCur === 'USD' ? 'text-emerald-600' : 'text-slate-700'}`}>{row.rateCur}</td>
+                        
+                        {/* BILLING CURRENCY */}
+                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-600 text-right">
+                          {formatDecimal(row.billingCurrency)}
+                        </td>
+                        
+                        {/* TOTAL */}
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
+                          {formatDecimal(row.total)}
+                        </td>
+                        
+                        {/* EQV IDR */}
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
+                          {formatDecimal(row.eqvIdr)}
+                        </td>
+
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="8" className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan="10" className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

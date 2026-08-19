@@ -7,8 +7,6 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { 
-
-
   ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart 
 } from 'recharts';
@@ -222,7 +220,7 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative">
       
-      {/* --- MODAL POPUP --- */}
+      {/* --- MODAL POPUP TABEL --- */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 z-50 flex justify-center items-center backdrop-blur-[2px] p-4 transition-opacity">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-slate-100">
@@ -261,42 +259,51 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* --- OVERLAY MOBILE MENU --- */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 bg-slate-900/50 z-30" onClick={() => setIsMobileMenuOpen(false)}></div>
-      )}
+      {/* --- OVERLAY MOBILE MENU DENGAN BLUR --- */}
+      <div 
+        className={`md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+        onClick={() => setIsMobileMenuOpen(false)}
+      ></div>
 
-      {/* --- SIDEBAR KIRI --- */}
-      <aside className={`absolute md:relative z-40 left-0 top-0 h-full bg-[#f8fafc] border-r border-slate-200/60 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-[104px] flex flex-col justify-between items-center py-6 shrink-0`}>
-        <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-sm border border-slate-100">
-         
+      {/* --- SIDEBAR KIRI (Profesional & Melayang di Mobile) --- */}
+      <aside className={`fixed md:relative z-50 left-0 top-0 h-full bg-transparent md:bg-[#f8fafc] border-none md:border-r border-slate-200/60 transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-[100px] md:w-[104px] flex flex-col justify-between items-center py-6 sm:py-8 shrink-0`}>
+        
+        {/* Kapsul Menu Navigasi */}
+        <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border border-slate-100/50 md:border-slate-100">
+          {/* Tombol X (Tutup) khusus Mobile */}
+          <button className="md:hidden mb-8 text-slate-400 hover:text-blue-600 transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+            <X size={26} strokeWidth={1.5} />
+          </button>
+
           <nav className="flex flex-col gap-8 items-center">
             <button className="text-blue-600 transition-colors" title="Dashboard"><CreditCard size={24} strokeWidth={1.5} /></button>
             <button onClick={() => navigate('/detail-cost')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Cost"><Book size={24} strokeWidth={1.5} /></button>
-
+           
           </nav>
         </div>
         
+        {/* Kapsul Profile & Logout */}
         <div className="flex flex-col gap-4 relative">
           <div className="relative flex justify-center">
-            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
+            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
               <User size={22} strokeWidth={1.5} />
               <ChevronUp size={14} strokeWidth={2} className={`absolute top-2 right-1 text-slate-400 transition-transform duration-300 ${isProfileOpen ? 'rotate-180 text-blue-500' : ''}`} />
             </button>
             {isProfileOpen && (
               <div className="absolute left-[calc(100%+16px)] bottom-0 w-56 bg-white border border-slate-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-4 z-50 flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
-                <div className="w-5 h-5 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0"><User size={20} strokeWidth={2} /></div>
+                <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0"><User size={20} strokeWidth={2} /></div>
                 <div><p className="text-[14px] font-bold text-slate-800 leading-tight">Mandiri</p><p className="text-[12px] text-slate-500 font-medium">Administrator</p></div>
               </div>
             )}
           </div>
-          <button onClick={handleLogout} className="bg-white rounded-[1.25rem] w-14 h-14 flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors"><LogOut size={22} strokeWidth={1.5} className="transform rotate-180" /></button>
+          <button onClick={handleLogout} className="bg-white rounded-[1.25rem] w-14 h-14 flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border border-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors"><LogOut size={22} strokeWidth={1.5} className="transform rotate-180" /></button>
         </div>
       </aside>
 
       {/* --- KONTEN DASBOR UTAMA --- */}
       <main className="flex-1 flex flex-col h-screen overflow-x-hidden overflow-y-auto" onClick={() => setIsProfileOpen(false)}>
         
+        {/* MOBILE HEADER BAR */}
         <div className="md:hidden flex justify-between items-center bg-white px-5 py-4 border-b border-slate-200 sticky top-0 z-20">
           <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-700 hover:text-blue-600"><Menu size={24} /></button>
           <h1 className="font-bold text-lg text-slate-900 tracking-tight">Dashboard</h1>
@@ -305,15 +312,21 @@ const Dashboard = () => {
 
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
           
-          <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md">
-            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-5 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
+          
+          {/* BANNER BIRU KEPALA */}
+          <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md overflow-hidden">
+            <div className="shrink-0 flex items-center">
+              <img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-5 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" />
+            </div>
             <div className="text-center flex-1 px-4 hidden md:block mt-1">
               <h2 className="text-white text-base lg:text-[18px] font-bold tracking-wide uppercase leading-none">Dashboard Principal Fee eChannel Transaction</h2>
               <p className="text-white text-[10px] lg:text-[11px] font-light mt-1 opacity-90 tracking-widest italic leading-none">ELECTRONIC CHANNEL OPERATIONS GROUP</p>
             </div>
-            <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
+            <div className="shrink-0 flex items-center">
+              <img src={LogoDanantara} alt="Danantara" className="h-12 sm:h-10 scale-[2] sm:scale-[2.5] transform origin-right object-contain" />
+            </div>
           </div>
-
+          {/* HEADER & FILTER */}
           <header className="flex flex-col xl:flex-row justify-between items-start mb-8 gap-5">
             <div className="max-w-2xl mt-1">
               <p className="text-[15px] text-slate-500 leading-relaxed font-medium">Peningkatan biaya transaksi principal & switcher seiring dengan pertumbuhan transaksi dan menunjukkan tren yang sehat.</p>
@@ -339,11 +352,13 @@ const Dashboard = () => {
                   </div>
                 </div>
               </div>
-              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">Apply</button>
+              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">Apply Filter</button>
             </div>
           </header>
 
           <div className="grid grid-cols-12 gap-5 pb-10">
+            
+            {/* SUMMARY CARDS */}
             {[
               { label: 'Sales Volume', value: `Rp ${dashboardData.summary.sales} T`, icon: BarChart2, trend: '▲ 12.4% YoY', tColor: 'text-emerald-600' },
               { label: 'Total Principal Cost', value: `Rp ${dashboardData.summary.cost} B`, icon: CreditCard, trend: '▲ 8.1% YoY', tColor: 'text-emerald-600' },
@@ -360,6 +375,7 @@ const Dashboard = () => {
               </div>
             ))}
 
+            {/* CHART: SALES VOLUME VS PRINCIPAL COST */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                 <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Principal Cost by {chartTimeLabel}</h3>
@@ -381,6 +397,7 @@ const Dashboard = () => {
               </div>
             </div>
             
+            {/* CHART: COST PER VOLUME */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost per Volume</h3>
               <div className="flex-1 w-full -ml-4 sm:ml-0">
@@ -396,6 +413,7 @@ const Dashboard = () => {
               </div>
             </div>
 
+            {/* CHART: COST BY PRINCIPAL */}
             <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-4 text-center sm:text-left">Cost by Principal</h3>
               <div className="flex-1 flex flex-col xl:flex-row items-center justify-center gap-4">
@@ -426,6 +444,7 @@ const Dashboard = () => {
               </div>
             </div>
 
+            {/* CHART: COST BY GROUP */}
             <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-2 flex justify-center sm:justify-start gap-1.5 items-center">
                 Cost by Group <span className="text-[12px] text-slate-400 font-medium">(Rp B)</span>
@@ -442,6 +461,7 @@ const Dashboard = () => {
               </div>
             </div>
 
+            {/* REKONSILIASI STATUS */}
             <div className="col-span-12 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-6 text-center sm:text-left">Rekonsiliasi Status</h3>
               <div className="flex flex-col gap-4 flex-1 justify-center">

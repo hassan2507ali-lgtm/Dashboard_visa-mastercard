@@ -127,7 +127,8 @@ const Dashboard = () => {
     let totalSales = 0, totalCost = 0, totalRate = 0;
     let visaCost = 0, mcCost = 0, othersCost = 0, visaVol = 0, mcVol = 0, othersVol = 0;
     
-    let credit = 0, debit = 0, acquiringTotal = 0, acqInterchange = 0, acqService = 0;
+    // Siapkan variabel total untuk group (Acquiring dipecah 2)
+    let credit = 0, debit = 0, acqInterchange = 0, acqService = 0;
     
     const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0 };
     const chartMap = {};
@@ -141,10 +142,10 @@ const Dashboard = () => {
       else if (item.principal === 'Mastercard') { mcCost += item.principalCost; mcVol += item.salesVolume; }
       else { othersCost += item.principalCost; othersVol += item.salesVolume; }
       
+      // Agregasi Data berdasarkan Group & SubGroup (Khusus Acquiring)
       if (item.group === 'Credit Card') credit += item.principalCost; 
       else if (item.group === 'Debit Card') debit += item.principalCost; 
       else if (item.group === 'Acquiring') {
-        acquiringTotal += item.principalCost;
         if (item.subGroup === 'Interchange') acqInterchange += item.principalCost;
         else if (item.subGroup === 'Service') acqService += item.principalCost;
       }
@@ -154,6 +155,7 @@ const Dashboard = () => {
       const d = new Date(item.date);
       let groupKey = ''; let displayLabel = '';
       
+      // FORMAT TANGGAL DIUBAH MENJADI HARIAN SEPERTI GAMBAR (cth: 12 Aug 26)
       if (appliedFilters.type === 'daily') {
         groupKey = item.date; 
         const day = String(d.getDate()).padStart(2, '0');
@@ -168,8 +170,9 @@ const Dashboard = () => {
         displayLabel = monthsShort[d.getMonth()]; 
       }
 
-      const iCost = item.principalCost * 0.7; 
-      const sCost = item.principalCost * 0.3; 
+      // Hitung proporsi Interchange vs Service fee harian untuk grafik Cost Transaction
+      const iCost = item.principalCost * 0.7; // Asumsi simulasi rasio interchange
+      const sCost = item.principalCost * 0.3; // Asumsi simulasi rasio service
 
       if (!chartMap[groupKey]) chartMap[groupKey] = { label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, interchangeFee: 0, serviceFee: 0, count: 0 };
       
@@ -203,12 +206,8 @@ const Dashboard = () => {
       groupStats: [
         {name: 'Credit Card', value: Number(credit.toFixed(2))}, 
         {name: 'Debit Card', value: Number(debit.toFixed(2))}, 
-        {
-          name: 'Acquiring', 
-          value: Number(acquiringTotal.toFixed(2)),
-          interchange: Number(acqInterchange.toFixed(2)),
-          service: Number(acqService.toFixed(2))
-        }
+        {name: 'Acq Interchange', value: Number(acqInterchange.toFixed(2))},
+        {name: 'Acq Service', value: Number(acqService.toFixed(2))}
       ].sort((a,b) => b.value - a.value),
       statusStats: [
         { label: 'Done Rekon (No Deviasi)', val: Math.round((statusCount['Done Rekon (No Deviasi)']/totalStatus)*100) || 0, color: 'bg-emerald-500', icon: CheckCircle2, iconColor: 'text-emerald-500' },
@@ -374,7 +373,7 @@ const Dashboard = () => {
           
           {/* BANNER BIRU KEPALA */}
           <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md overflow-hidden">
-            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-6 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
+            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-5 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
             <div className="text-center flex-1 px-4 hidden md:block mt-1">
               <h2 className="text-white text-base lg:text-[18px] font-bold tracking-wide uppercase leading-none">Dashboard Principal Fee eChannel Transaction</h2>
               <p className="text-white text-[10px] lg:text-[11px] font-light mt-1 opacity-90 tracking-widest italic leading-none">ELECTRONIC CHANNEL OPERATIONS GROUP</p>
@@ -382,60 +381,42 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* HEADER & FILTER */}
-          <header className="flex flex-col xl:flex-row justify-between items-start mb-8 gap-5">
-            <div className="max-w-2xl mt-1">
-              <p className="text-[15px] text-slate-500 leading-relaxed font-medium">Peningkatan biaya transaksi principal & switcher seiring dengan pertumbuhan transaksi dan menunjukkan tren yang sehat.</p>
-            </div>
-            <div className="flex flex-col items-start xl:items-end gap-3 w-full xl:w-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex flex-wrap items-center gap-3">
-                
-                {/* --- FILTER START DATE (Clickable Container) --- */}
-                <div 
-                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
-                  onClick={() => document.getElementById('startDatePicker').showPicker()}
-                >
-                  <CalendarIcon size={18} className="text-slate-400 shrink-0" />
-                  <input 
-                    id="startDatePicker"
-                    type="date" 
-                    className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" 
-                    value={filters.startDate} 
-                    onChange={(e) => setFilters({...filters, startDate: e.target.value})} 
-                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                  />
-                </div>
-
-                {/* --- FILTER END DATE (Clickable Container) --- */}
-                <div 
-                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
-                  onClick={() => document.getElementById('endDatePicker').showPicker()}
-                >
-                  {/* TANDA STRIP DIHILANGKAN SESUAI REQUEST */}
-                  <CalendarIcon size={18} className="text-slate-400 shrink-0" />
-                  <input 
-                    id="endDatePicker"
-                    type="date" 
-                    className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" 
-                    value={filters.endDate} 
-                    onChange={(e) => setFilters({...filters, endDate: e.target.value})} 
-                    onClick={(e) => e.target.showPicker && e.target.showPicker()}
-                  />
-                </div>
-
-                {/* --- FILTER VIEW TYPE --- */}
-                <div className="relative flex items-center w-full sm:w-auto">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
-                    <Filter size={18} className="text-slate-400 shrink-0" />
-                    <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
-                      <option value="all">All Data</option><option value="daily">Daily View</option><option value="monthly">Monthly View</option><option value="yearly">Yearly View</option>
-                    </select>
-                    <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
-                  </div>
-                </div>
-
+          {/* HEADER & FILTER (DI KANAN SEJAJAR) */}
+          <header className="flex justify-end mb-8 w-full">
+            <div className="flex flex-wrap items-center justify-end gap-3 w-full" onClick={(e) => e.stopPropagation()}>
+              
+              {/* --- FILTER START DATE --- */}
+              <div 
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
+                onClick={() => document.getElementById('startDatePicker').showPicker()}
+              >
+                <CalendarIcon size={18} className="text-slate-400 shrink-0" />
+                <input id="startDatePicker" type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" value={filters.startDate} onChange={(e) => setFilters({...filters, startDate: e.target.value})} onClick={(e) => e.target.showPicker && e.target.showPicker()} />
               </div>
-              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">Apply </button>
+
+              {/* --- FILTER END DATE --- */}
+              <div 
+                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
+                onClick={() => document.getElementById('endDatePicker').showPicker()}
+              >
+                <CalendarIcon size={18} className="text-slate-400 shrink-0" />
+                <input id="endDatePicker" type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" value={filters.endDate} onChange={(e) => setFilters({...filters, endDate: e.target.value})} onClick={(e) => e.target.showPicker && e.target.showPicker()} />
+              </div>
+
+              {/* --- FILTER VIEW TYPE --- */}
+              <div className="relative flex items-center w-full sm:w-auto">
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
+                  <Filter size={18} className="text-slate-400 shrink-0" />
+                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
+                    <option value="all">All Data</option><option value="daily">Daily View</option><option value="monthly">Monthly View</option><option value="yearly">Yearly View</option>
+                  </select>
+                  <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* --- BUTTON APPLY --- */}
+              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">Apply</button>
+
             </div>
           </header>
 
@@ -491,7 +472,6 @@ const Dashboard = () => {
                     <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={-5} width={45} />
                     <Tooltip contentStyle={customTooltipStyle} />
                     <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
-                    
                     <Bar dataKey="interchangeFee" name="Interchange Fee" stackId="a" fill="#94a3b8" stroke="#64748b" strokeWidth={1} barSize={isDaily ? 14 : 26} radius={[0, 0, 4, 4]} />
                     <Bar dataKey="serviceFee" name="Service Fee" stackId="a" fill="#fde047" stroke="#ca8a04" strokeWidth={1} radius={[4, 4, 0, 0]} />
                   </ComposedChart>
@@ -539,8 +519,8 @@ const Dashboard = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dashboardData.groupStats} layout="vertical" margin={{ top: 0, right: 35, left: 10, bottom: 0 }}>
                     <XAxis type="number" tick={{fontSize: 11, fill: '#94a3b8'}} axisLine={{stroke: '#e2e8f0'}} tickLine={false} />
-                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={80} tick={{fontSize: 12, fill: '#475569', fontWeight: 600}} />
-                    <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomGroupTooltip />} />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={110} tick={{fontSize: 12, fill: '#475569', fontWeight: 600}} />
+                    <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={customTooltipStyle} />
                     <Bar dataKey="value" fill="#2563eb" barSize={20} radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#475569', fontSize: 11, fontWeight: 700 }} />
                   </BarChart>
                 </ResponsiveContainer>

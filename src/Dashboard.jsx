@@ -342,7 +342,7 @@ const Dashboard = () => {
               <ChevronDown size={16} strokeWidth={1.5} className="text-slate-400 absolute right-3.5 pointer-events-none" />
             </div>
             <button onClick={handleApply} className="bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all active:scale-[0.97] shadow-sm flex items-center justify-center">
-              Apply Filter
+              Apply
             </button>
           </div>
         </header>

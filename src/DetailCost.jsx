@@ -391,7 +391,7 @@ const DetailCost = () => {
             <div className="flex flex-col lg:flex-row justify-between items-start px-6 py-6 border-b border-slate-100 gap-5">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 tracking-tight">Detail Billing</h2>
-                <p className="text-[13px] text-slate-500 font-medium mt-1">Manage and classify billing accounts, group methods, and card issuers.</p>
+                
               </div>
 
               {/* Wrapper Flex-Col untuk meletakkan tombol di bawah deretan filter baru */}

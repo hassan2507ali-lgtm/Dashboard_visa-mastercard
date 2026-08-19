@@ -34,6 +34,7 @@ const generateDummyData = () => {
       const groupName = groupRand > 0.6 ? 'Credit Card' : (groupRand > 0.25 ? 'Debit Card' : 'Acquiring');
       
       // Tambahkan subGroup khusus untuk Acquiring (Interchange / Service)
+      // Untuk Credit & Debit otomatis akan dianggap Service di logika agregasi nanti
       const subGroup = groupName === 'Acquiring' ? (Math.random() > 0.5 ? 'Interchange' : 'Service') : null;
 
       const statusRand = Math.random();
@@ -45,11 +46,12 @@ const generateDummyData = () => {
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
+      // Variasi principalCost diperbesar agar bar terlihat lebih dinamis / gerak-gerak
       data.push({
         id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
         date: dateString, principal: type, group: groupName, subGroup: subGroup, status: status,
         salesVolume: Math.random() * 8 + 2, 
-        principalCost: Number((Math.random() * 0.03 + 0.01).toFixed(3)), 
+        principalCost: Number((Math.random() * 0.08 + 0.02).toFixed(3)), 
         costRate: Number((Math.random() * 0.01 + 0.035).toFixed(3)),
         merchant: `Merchant ${String.fromCharCode(65 + (i % 5))}`,
       });
@@ -62,15 +64,14 @@ const generateDummyData = () => {
 
 const DUMMY_DB = generateDummyData();
 
-const getFirstDayOfMonth = () => {
+const getFirstDayOfYear = () => {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  return `${now.getFullYear()}-01-01`;
 };
 
-const getLastDayOfMonth = () => {
+const getLastDayOfYear = () => {
   const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+  return `${now.getFullYear()}-12-31`;
 };
 
 const Dashboard = () => {
@@ -80,9 +81,9 @@ const Dashboard = () => {
   // 2. STATE MANAGEMENT
   // ==========================================
   const [filters, setFilters] = useState({
-    startDate: getFirstDayOfMonth(), 
-    endDate: getLastDayOfMonth(),    
-    type: 'daily'                    
+    startDate: getFirstDayOfYear(), 
+    endDate: getLastDayOfYear(),    
+    type: 'monthly'                    
   });
   
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
@@ -127,8 +128,8 @@ const Dashboard = () => {
     let totalSales = 0, totalCost = 0, totalRate = 0;
     let visaCost = 0, mcCost = 0, othersCost = 0, visaVol = 0, mcVol = 0, othersVol = 0;
     
-    // Siapkan variabel total untuk group (Acquiring dipecah 2)
-    let credit = 0, debit = 0, acqInterchange = 0, acqService = 0;
+    // Siapkan variabel total untuk group (Sekarang Credit & Debit masuk ke Service murni)
+    let creditService = 0, debitService = 0, acqInterchange = 0, acqService = 0;
     
     const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0 };
     const chartMap = {};
@@ -142,9 +143,9 @@ const Dashboard = () => {
       else if (item.principal === 'Mastercard') { mcCost += item.principalCost; mcVol += item.salesVolume; }
       else { othersCost += item.principalCost; othersVol += item.salesVolume; }
       
-      // Agregasi Data berdasarkan Group & SubGroup (Khusus Acquiring)
-      if (item.group === 'Credit Card') credit += item.principalCost; 
-      else if (item.group === 'Debit Card') debit += item.principalCost; 
+      // Agregasi Data berdasarkan Group & SubGroup
+      if (item.group === 'Credit Card') creditService += item.principalCost; 
+      else if (item.group === 'Debit Card') debitService += item.principalCost; 
       else if (item.group === 'Acquiring') {
         if (item.subGroup === 'Interchange') acqInterchange += item.principalCost;
         else if (item.subGroup === 'Service') acqService += item.principalCost;
@@ -153,26 +154,31 @@ const Dashboard = () => {
       statusCount[item.status] = (statusCount[item.status] || 0) + 1;
 
       const d = new Date(item.date);
+      const year = d.getFullYear();
+      const monthIndex = d.getMonth();
+      const shortYear = String(year).slice(-2);
+      
       let groupKey = ''; let displayLabel = '';
       
-      // FORMAT TANGGAL DIUBAH MENJADI HARIAN SEPERTI GAMBAR (cth: 12 Aug 26)
       if (appliedFilters.type === 'daily') {
         groupKey = item.date; 
         const day = String(d.getDate()).padStart(2, '0');
-        const month = monthsShortEn[d.getMonth()];
-        const year = String(d.getFullYear()).slice(-2);
-        displayLabel = `${day} ${month} ${year}`; 
+        const month = monthsShortEn[monthIndex];
+        displayLabel = `${day} ${month} ${shortYear}`; 
+      } else if (appliedFilters.type === 'monthly') {
+        groupKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; 
+        displayLabel = `${monthsShort[monthIndex]} '${shortYear}`; 
+      } else if (appliedFilters.type === 'quarterly') {
+        const quarter = Math.floor(monthIndex / 3) + 1;
+        groupKey = `${year}-Q${quarter}`;
+        displayLabel = `Q${quarter} '${shortYear}`;
       } else if (appliedFilters.type === 'yearly') {
-        groupKey = d.getFullYear().toString(); 
-        displayLabel = groupKey;
-      } else {
-        groupKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; 
-        displayLabel = monthsShort[d.getMonth()]; 
+        groupKey = year.toString(); 
+        displayLabel = year.toString();
       }
 
-      // Hitung proporsi Interchange vs Service fee harian untuk grafik Cost Transaction
-      const iCost = item.principalCost * 0.7; // Asumsi simulasi rasio interchange
-      const sCost = item.principalCost * 0.3; // Asumsi simulasi rasio service
+      const iCost = item.principalCost * 0.7;
+      const sCost = item.principalCost * 0.3;
 
       if (!chartMap[groupKey]) chartMap[groupKey] = { label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, interchangeFee: 0, serviceFee: 0, count: 0 };
       
@@ -203,12 +209,27 @@ const Dashboard = () => {
         mc: { cost: mcCost.toFixed(2), rate: (mcCost/mcVol || 0).toFixed(3), pct: Math.round((mcCost/totalCost)*100) || 0 },
         others: { cost: othersCost.toFixed(2), rate: (othersCost/othersVol || 0).toFixed(3), pct: Math.round((othersCost/totalCost)*100) || 0 }
       },
+      // Data grup disiapkan hanya untuk Interchange dan Service
       groupStats: [
-        {name: 'Credit Card', value: Number(credit.toFixed(2))}, 
-        {name: 'Debit Card', value: Number(debit.toFixed(2))}, 
-        {name: 'Acq Interchange', value: Number(acqInterchange.toFixed(2))},
-        {name: 'Acq Service', value: Number(acqService.toFixed(2))}
-      ].sort((a,b) => b.value - a.value),
+        {
+          name: 'Credit Card', 
+          interchange: 0, // 0 Karena hanya service
+          service: Number(creditService.toFixed(2)),
+          totalSort: Number(creditService.toFixed(2))
+        }, 
+        {
+          name: 'Debit Card', 
+          interchange: 0, // 0 Karena hanya service
+          service: Number(debitService.toFixed(2)),
+          totalSort: Number(debitService.toFixed(2))
+        }, 
+        {
+          name: 'Acquiring', 
+          interchange: Number(acqInterchange.toFixed(2)),
+          service: Number(acqService.toFixed(2)),
+          totalSort: Number((acqInterchange + acqService).toFixed(2))
+        }
+      ].sort((a,b) => b.totalSort - a.totalSort),
       statusStats: [
         { label: 'Done Rekon (No Deviasi)', val: Math.round((statusCount['Done Rekon (No Deviasi)']/totalStatus)*100) || 0, color: 'bg-emerald-500', icon: CheckCircle2, iconColor: 'text-emerald-500' },
         { label: 'Done Rekon (Deviasi)', val: Math.round((statusCount['Done Rekon (Deviasi)']/totalStatus)*100) || 0, color: 'bg-amber-400', icon: AlertTriangle, iconColor: 'text-amber-500' },
@@ -247,24 +268,31 @@ const Dashboard = () => {
   };
 
   const customTooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '13px', fontWeight: '500', color: '#334155' };
-  const chartTimeLabel = appliedFilters.type === 'daily' ? 'Day' : appliedFilters.type === 'yearly' ? 'Year' : 'Month';
-  const isDaily = appliedFilters.type === 'daily';
+  const chartTimeLabel = appliedFilters.type === 'monthly' ? 'Month' : appliedFilters.type === 'quarterly' ? 'Quarter' : 'Year';
 
   // --- KUSTOM TOOLTIP UNTUK BAR COST BY GROUP ---
+  // Diubah agar pop up membedakan kartu (hanya service) dan Acquiring (keduanya)
   const CustomGroupTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
         <div className="bg-white border border-slate-200 rounded-lg shadow-md p-3 text-[13px] text-slate-700 min-w-[150px]">
           <p className="font-bold text-slate-800 mb-1">{label}</p>
-          <p className="text-blue-600 font-semibold mb-1">Total: {data.value} B</p>
+          <p className="text-blue-600 font-semibold mb-1">Total: {data.totalSort} B</p>
           
-          {label === 'Acquiring' && (
+          {label === 'Acquiring' ? (
             <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
               <div className="flex justify-between items-center text-[12px] text-slate-500">
                 <span>Interchange:</span>
                 <span className="font-semibold text-slate-700 ml-3">{data.interchange} B</span>
               </div>
+              <div className="flex justify-between items-center text-[12px] text-slate-500">
+                <span>Service:</span>
+                <span className="font-semibold text-slate-700 ml-3">{data.service} B</span>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1">
               <div className="flex justify-between items-center text-[12px] text-slate-500">
                 <span>Service:</span>
                 <span className="font-semibold text-slate-700 ml-3">{data.service} B</span>
@@ -381,26 +409,42 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* HEADER & FILTER (DI KANAN SEJAJAR) */}
+          {/* HEADER & FILTER */}
           <header className="flex justify-end mb-8 w-full">
             <div className="flex flex-wrap items-center justify-end gap-3 w-full" onClick={(e) => e.stopPropagation()}>
               
               {/* --- FILTER START DATE --- */}
-              <div 
-                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
-                onClick={() => document.getElementById('startDatePicker').showPicker()}
-              >
-                <CalendarIcon size={18} className="text-slate-400 shrink-0" />
-                <input id="startDatePicker" type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" value={filters.startDate} onChange={(e) => setFilters({...filters, startDate: e.target.value})} onClick={(e) => e.target.showPicker && e.target.showPicker()} />
+              <div className="relative flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto hover:border-blue-400 transition-colors overflow-hidden">
+                <CalendarIcon size={18} className="text-slate-400 shrink-0 pointer-events-none z-10" />
+                <input 
+                  type="date" 
+                  className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer z-20 
+                  [&::-webkit-calendar-picker-indicator]:absolute 
+                  [&::-webkit-calendar-picker-indicator]:inset-0 
+                  [&::-webkit-calendar-picker-indicator]:w-full 
+                  [&::-webkit-calendar-picker-indicator]:h-full 
+                  [&::-webkit-calendar-picker-indicator]:opacity-0 
+                  [&::-webkit-calendar-picker-indicator]:cursor-pointer" 
+                  value={filters.startDate} 
+                  onChange={(e) => setFilters({...filters, startDate: e.target.value})} 
+                />
               </div>
 
               {/* --- FILTER END DATE --- */}
-              <div 
-                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto cursor-pointer hover:border-blue-400 transition-colors"
-                onClick={() => document.getElementById('endDatePicker').showPicker()}
-              >
-                <CalendarIcon size={18} className="text-slate-400 shrink-0" />
-                <input id="endDatePicker" type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer [&::-webkit-calendar-picker-indicator]:hidden" value={filters.endDate} onChange={(e) => setFilters({...filters, endDate: e.target.value})} onClick={(e) => e.target.showPicker && e.target.showPicker()} />
+              <div className="relative flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto hover:border-blue-400 transition-colors overflow-hidden">
+                <CalendarIcon size={18} className="text-slate-400 shrink-0 pointer-events-none z-10" />
+                <input 
+                  type="date" 
+                  className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer z-20 
+                  [&::-webkit-calendar-picker-indicator]:absolute 
+                  [&::-webkit-calendar-picker-indicator]:inset-0 
+                  [&::-webkit-calendar-picker-indicator]:w-full 
+                  [&::-webkit-calendar-picker-indicator]:h-full 
+                  [&::-webkit-calendar-picker-indicator]:opacity-0 
+                  [&::-webkit-calendar-picker-indicator]:cursor-pointer" 
+                  value={filters.endDate} 
+                  onChange={(e) => setFilters({...filters, endDate: e.target.value})} 
+                />
               </div>
 
               {/* --- FILTER VIEW TYPE --- */}
@@ -408,7 +452,9 @@ const Dashboard = () => {
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
                   <Filter size={18} className="text-slate-400 shrink-0" />
                   <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
-                    <option value="all">All Data</option><option value="daily">Daily View</option><option value="monthly">Monthly View</option><option value="yearly">Yearly View</option>
+                    <option value="monthly">Monthly View</option>
+                    <option value="quarterly">Quarterly View</option>
+                    <option value="yearly">Yearly View</option>
                   </select>
                   <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
                 </div>
@@ -426,7 +472,7 @@ const Dashboard = () => {
             {[
               { label: 'Sales Volume', value: `Rp ${dashboardData.summary.sales} T`, icon: BarChart2, trend: '▲ 12.4% YoY', tColor: 'text-emerald-600' },
               { label: 'Total Principal Cost', value: `Rp ${dashboardData.summary.cost} B`, icon: CreditCard, trend: '▲ 8.1% YoY', tColor: 'text-emerald-600' },
-              { label: 'Cost Per Volume', value: `${dashboardData.summary.rate} bps`, icon: Clock, trend: '▼ -0.01 bps vs PY', tColor: 'text-rose-500' }
+              { label: 'Cost Per Volume', value: `${dashboardData.summary.rate} %`, icon: Clock, trend: '▼ -0.01 % vs PY', tColor: 'text-rose-500' }
             ].map((card, idx) => (
               <div key={idx} className="col-span-12 sm:col-span-4 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden group">
                 <div className="absolute top-0 left-0 w-full h-[3px] bg-amber-400"></div>
@@ -439,23 +485,22 @@ const Dashboard = () => {
               </div>
             ))}
 
-            {/* CHART 1: SALES VOLUME VS PRINCIPAL COST */}
+            {/* CHART 1: SALES VOLUME VS COST TO VOLUME */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Cost To Volume  | by {chartTimeLabel}</h3>
-                <button onClick={handleViewDetail} className="flex items-center gap-1.5 text-[13px] sm:text-[14px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl group shadow-sm">View Detail <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" /></button>
+                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Cost To Volume</h3>
               </div>
               <div className="flex-1 w-full -ml-4 sm:ml-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.chartData} margin={{top: 10, bottom: isDaily ? 20 : 0, right: 10}}>
+                  <ComposedChart data={dashboardData.chartData} margin={{top: 10, bottom: 0, right: 10}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} angle={isDaily ? -45 : 0} textAnchor={isDaily ? "end" : "center"} height={isDaily ? 60 : 30} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={-5} width={40} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={5} width={40} />
                     <Tooltip contentStyle={customTooltipStyle} />
                     <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
-                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol (T)" fill="#2563eb" barSize={isDaily ? 8 : 16} radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Principal Cost (B)" stroke="#f59e0b" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#f59e0b'}} />
+                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol (T)" fill="#2563eb" maxBarSize={40} radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost To Volume" stroke="#f59e0b" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#f59e0b'}} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -466,14 +511,14 @@ const Dashboard = () => {
               <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost Transaction</h3>
               <div className="flex-1 w-full -ml-4 sm:ml-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.chartData} margin={{top: 10, bottom: isDaily ? 20 : 0, right: 10}}>
+                  <ComposedChart data={dashboardData.chartData} margin={{top: 10, bottom: 0, right: 10}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} angle={isDaily ? -45 : 0} textAnchor={isDaily ? "end" : "center"} height={isDaily ? 60 : 30}/>
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={-5} width={45} />
                     <Tooltip contentStyle={customTooltipStyle} />
                     <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
-                    <Bar dataKey="interchangeFee" name="Interchange Fee" stackId="a" fill="#94a3b8" stroke="#64748b" strokeWidth={1} barSize={isDaily ? 14 : 26} radius={[0, 0, 4, 4]} />
-                    <Bar dataKey="serviceFee" name="Service Fee" stackId="a" fill="#fde047" stroke="#ca8a04" strokeWidth={1} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="interchangeFee" name="Interchange Fee" stackId="a" fill="#94a3b8" stroke="#64748b" strokeWidth={1} maxBarSize={40} radius={[0, 0, 4, 4]} />
+                    <Bar dataKey="serviceFee" name="Service Fee" stackId="a" fill="#fde047" stroke="#ca8a04" strokeWidth={1} maxBarSize={40} radius={[4, 4, 0, 0]} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -510,7 +555,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* CHART 4: COST BY GROUP */}
+            {/* CHART 4: COST BY GROUP (STACKED BAR HANYA DENGAN ABU-ABU DAN KUNING) */}
             <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-2 flex justify-center sm:justify-start gap-1.5 items-center">
                 Cost by Group <span className="text-[12px] text-slate-400 font-medium">(Rp B)</span>
@@ -519,9 +564,14 @@ const Dashboard = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dashboardData.groupStats} layout="vertical" margin={{ top: 0, right: 35, left: 10, bottom: 0 }}>
                     <XAxis type="number" tick={{fontSize: 11, fill: '#94a3b8'}} axisLine={{stroke: '#e2e8f0'}} tickLine={false} />
-                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={110} tick={{fontSize: 12, fill: '#475569', fontWeight: 600}} />
-                    <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={customTooltipStyle} />
-                    <Bar dataKey="value" fill="#2563eb" barSize={20} radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#475569', fontSize: 11, fontWeight: 700 }} />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={80} tick={{fontSize: 12, fill: '#475569', fontWeight: 600}} />
+                    
+                    <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomGroupTooltip />} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
+                    
+                    {/* Bar Bertumpuk Hanya Untuk Interchange dan Service */}
+                    <Bar dataKey="interchange" name="Interchange" stackId="a" fill="#94a3b8" barSize={20} />
+                    <Bar dataKey="service" name="Service" stackId="a" fill="#fde047" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

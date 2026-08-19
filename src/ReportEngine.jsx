@@ -1,218 +1,472 @@
 import React, { useState, useEffect } from 'react';
-import { Settings2, ChevronDown, Calendar as CalendarIcon, User, LogOut, CreditCard, FileText, ShoppingCart, Calendar, LayoutDashboard, CheckSquare, Filter, ArrowLeft, Download } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import LogoMandiri from './logo-bank-mandiri.webp';
+import { 
+  Menu, CreditCard, Book, ShoppingCart, FileText, 
+  Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
+  BarChart2, Clock, CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
+  ArrowRight
+} from 'lucide-react';
+import { 
+  ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
+  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, BarChart 
+} from 'recharts';
 
-const FILTER_OPTIONS = {
-  group: ['All', 'Issuer Kredit', 'Issuer Debit', 'Acq ADC', 'Acq ATM', 'Acq Both', 'Issuer Both', 'Both'],
-  klasifikasi: ['All', 'Internasional', 'Transaction Service', 'Lokal Service'],
-  principal: ['All', 'Visa', 'Master Card', 'JCB', 'Lokal'],
-  type: ['All', 'Monthly', 'Quarterly', 'Interchange', 'Daily', 'MTI'],
-  status: ['All', 'Progress', 'Complete', 'Failed']
-};
-
-const generateDummyTransactions = (startDateStr = '', endDateStr = '') => {
+// ==========================================
+// 1. GENERATE DUMMY DATABASE MASIF
+// ==========================================
+const generateDummyData = () => {
   const data = [];
-  const statuses = ['Progress', 'Complete', 'Failed']; 
-  const startMs = startDateStr ? new Date(startDateStr).getTime() : new Date('2026-01-01').getTime();
-  const endMs = endDateStr ? new Date(endDateStr).getTime() : new Date('2026-12-31').getTime();
+  let currentDate = new Date(2024, 0, 1);
+  const endDate = new Date(2026, 11, 31);
+  
+  let i = 0;
+  while (currentDate <= endDate) {
+    const numTrx = Math.floor(Math.random() * 3) + 1;
+    for(let j=0; j < numTrx; j++) {
+      const type = Math.random() > 0.45 ? 'Visa' : 'Mastercard';
+      const productRand = Math.random();
+      const product = productRand > 0.55 ? 'Credit' : (productRand > 0.2 ? 'Debit' : 'Prepaid');
+      const statusRand = Math.random();
+      let status = '';
+      if (statusRand > 0.48) status = 'Done Rekon (No Deviasi)';
+      else if (statusRand > 0.3) status = 'Done Rekon (Deviasi)';
+      else if (statusRand > 0.1) status = 'Belum Rekon';
+      else status = 'Fixed Rate';
 
-  for (let i = 0; i < 100; i++) {
-    const randomTime = startMs + Math.random() * (endMs - startMs);
-    const dateObj = new Date(randomTime);
-    const formattedDate = dateObj.toISOString().split('T')[0];
+      const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-    data.push({
-      id: `2ZN${Math.floor(Math.random() * 90000) + 10000}K`,
-      group: FILTER_OPTIONS.group[Math.floor(Math.random() * 7) + 1],
-      desc: `TRX-SYS-${Math.floor(Math.random() * 9000)}`,
-      periode: formattedDate,
-      klasifikasi: FILTER_OPTIONS.klasifikasi[Math.floor(Math.random() * 3) + 1],
-      type: FILTER_OPTIONS.type[Math.floor(Math.random() * 5) + 1].toUpperCase(),
-      principal: FILTER_OPTIONS.principal[Math.floor(Math.random() * 4) + 1],
-      status: statuses[Math.floor(Math.random() * statuses.length)] 
-    });
+      data.push({
+        id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
+        date: dateString, principal: type, product: product, status: status,
+        salesVolume: Math.random() * 8 + 2, 
+        principalCost: Number((Math.random() * 0.03 + 0.01).toFixed(3)), 
+        costRate: Number((Math.random() * 0.01 + 0.035).toFixed(3)),
+        merchant: `Merchant ${String.fromCharCode(65 + (i % 5))}`,
+      });
+      i++;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
   }
-  return data.sort((a, b) => new Date(b.periode) - new Date(a.periode));
+  return data;
 };
 
-export default function ReportEngine({ setCurrentPage }) {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [allTransactions, setAllTransactions] = useState([]);
-  const [displayedTransactions, setDisplayedTransactions] = useState([]);
-  const [activeDropdown, setActiveDropdown] = useState(null);
-  const [filters, setFilters] = useState({ group: 'All', klasifikasi: 'All', principal: 'All', type: 'All', status: 'All' });
+const DUMMY_DB = generateDummyData();
 
+const getFirstDayOfMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+};
+
+const getLastDayOfMonth = () => {
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+};
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+
+  // ==========================================
+  // 2. STATE MANAGEMENT
+  // ==========================================
+  const [filters, setFilters] = useState({
+    startDate: getFirstDayOfMonth(), 
+    endDate: getLastDayOfMonth(),    
+    type: 'daily'                    
+  });
+  
+  const [appliedFilters, setAppliedFilters] = useState({ ...filters });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalData, setModalData] = useState([]);
+  
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const [dashboardData, setDashboardData] = useState({
+    summary: { sales: 0, cost: 0, rate: 0, recovery: 0 },
+    chartData: [], 
+    principalStats: { visa: {vol: 0, cost: 0, rate: 0, pct: 0}, mc: {vol: 0, cost: 0, rate: 0, pct: 0} },
+    productStats: [{name: 'Credit', value: 0}, {name: 'Debit', value: 0}, {name: 'Prepaid', value: 0}],
+    statusStats: []
+  });
+
+  // ==========================================
+  // 3. LOGIKA FILTERING & AGREGASI
+  // ==========================================
   useEffect(() => {
-    const data = generateDummyTransactions();
-    setAllTransactions(data);
-    setDisplayedTransactions(data);
-  }, []);
+    const filteredDB = DUMMY_DB.filter(item => {
+      const start = appliedFilters.startDate ? appliedFilters.startDate : '2000-01-01';
+      const end = appliedFilters.endDate ? appliedFilters.endDate : '2100-01-01';
+      return item.date >= start && item.date <= end;
+    });
 
-  const closeDropdowns = () => setActiveDropdown(null);
-
-  const handleTableSubmit = () => {
-    let filtered = [...allTransactions];
-    if (filters.group !== 'All') filtered = filtered.filter(t => t.group === filters.group);
-    if (filters.klasifikasi !== 'All') filtered = filtered.filter(t => t.klasifikasi === filters.klasifikasi);
-    if (filters.principal !== 'All') filtered = filtered.filter(t => t.principal === filters.principal);
-    if (filters.type !== 'All') filtered = filtered.filter(t => t.type === filters.type.toUpperCase());
-    if (filters.status !== 'All') filtered = filtered.filter(t => t.status === filters.status);
-    setDisplayedTransactions(filtered);
-    closeDropdowns();
-  };
-
-  const handleDateSubmit = () => {
-    if(!startDate || !endDate) {
-      alert("Periode tanggal awal dan akhir harus diisi.");
+    if (filteredDB.length === 0) {
+      setDashboardData({
+        summary: { sales: 0, cost: 0, rate: 0, recovery: 0 },
+        chartData: [], principalStats: { visa: {vol:0,cost:0,rate:0,pct:0}, mc: {vol:0,cost:0,rate:0,pct:0} },
+        productStats: [], statusStats: []
+      });
       return;
     }
-    const newData = generateDummyTransactions(startDate, endDate);
-    setAllTransactions(newData);
-    let filtered = [...newData];
-    if (filters.group !== 'All') filtered = filtered.filter(t => t.group === filters.group);
-    if (filters.klasifikasi !== 'All') filtered = filtered.filter(t => t.klasifikasi === filters.klasifikasi);
-    if (filters.principal !== 'All') filtered = filtered.filter(t => t.principal === filters.principal);
-    if (filters.type !== 'All') filtered = filtered.filter(t => t.type === filters.type.toUpperCase());
-    if (filters.status !== 'All') filtered = filtered.filter(t => t.status === filters.status);
-    setDisplayedTransactions(filtered);
+
+    let totalSales = 0, totalCost = 0, totalRate = 0;
+    let visaCost = 0, mcCost = 0, visaVol = 0, mcVol = 0;
+    let credit = 0, debit = 0, prepaid = 0;
+    const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0 };
+    const chartMap = {};
+    const daysShort = ['Mg', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb'];
+    const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+
+    filteredDB.forEach(item => {
+      totalSales += item.salesVolume; totalCost += item.principalCost; totalRate += item.costRate;
+      if (item.principal === 'Visa') { visaCost += item.principalCost; visaVol += item.salesVolume; } else { mcCost += item.principalCost; mcVol += item.salesVolume; }
+      if (item.product === 'Credit') credit += item.principalCost; else if (item.product === 'Debit') debit += item.principalCost; else if (item.product === 'Prepaid') prepaid += item.principalCost;
+      statusCount[item.status] = (statusCount[item.status] || 0) + 1;
+
+      const d = new Date(item.date);
+      let groupKey = ''; let displayLabel = '';
+      if (appliedFilters.type === 'daily') {
+        groupKey = item.date; 
+        displayLabel = `${daysShort[d.getDay()]}, ${String(d.getDate()).padStart(2, '0')}`; 
+      } else if (appliedFilters.type === 'yearly') {
+        groupKey = d.getFullYear().toString(); 
+        displayLabel = groupKey;
+      } else {
+        groupKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; 
+        displayLabel = monthsShort[d.getMonth()]; 
+      }
+
+      if (!chartMap[groupKey]) chartMap[groupKey] = { label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, count: 0 };
+      chartMap[groupKey].salesVolume += item.salesVolume; chartMap[groupKey].principalCost += item.principalCost; chartMap[groupKey].totalRate += item.costRate; chartMap[groupKey].count += 1;
+    });
+
+    const avgRate = (totalRate / filteredDB.length).toFixed(3);
+    const totalStatus = Object.values(statusCount).reduce((a,b)=>a+b, 0);
+    const newChartData = Object.keys(chartMap).sort().map(key => ({
+      name: chartMap[key].label, salesVolume: Number(chartMap[key].salesVolume.toFixed(0)), principalCost: Number(chartMap[key].principalCost.toFixed(2)), costRate: Number((chartMap[key].totalRate / chartMap[key].count).toFixed(3))
+    }));
+
+    setDashboardData({
+      summary: { sales: totalSales.toFixed(0), cost: totalCost.toFixed(2), rate: avgRate, recovery: (totalCost * 0.15 * 1000).toFixed(0) },
+      chartData: newChartData,
+      principalStats: {
+        visa: { cost: visaCost.toFixed(2), rate: (visaCost/visaVol || 0).toFixed(3), pct: Math.round((visaCost/totalCost)*100) || 0 },
+        mc: { cost: mcCost.toFixed(2), rate: (mcCost/mcVol || 0).toFixed(3), pct: Math.round((mcCost/totalCost)*100) || 0 }
+      },
+      productStats: [
+        {name: 'Credit', value: Number(credit.toFixed(2))}, {name: 'Debit', value: Number(debit.toFixed(2))}, {name: 'Prepaid', value: Number(prepaid.toFixed(2))}
+      ].sort((a,b) => b.value - a.value),
+      statusStats: [
+        { label: 'Done Rekon (No Deviasi)', val: Math.round((statusCount['Done Rekon (No Deviasi)']/totalStatus)*100) || 0, color: 'bg-emerald-500', icon: CheckCircle2, iconColor: 'text-emerald-500' },
+        { label: 'Done Rekon (Deviasi)', val: Math.round((statusCount['Done Rekon (Deviasi)']/totalStatus)*100) || 0, color: 'bg-amber-400', icon: AlertTriangle, iconColor: 'text-amber-500' },
+        { label: 'Belum Rekon', val: Math.round((statusCount['Belum Rekon']/totalStatus)*100) || 0, color: 'bg-rose-500', icon: AlertCircle, iconColor: 'text-rose-500' },
+        { label: 'Fixed Rate', val: Math.round((statusCount['Fixed Rate']/totalStatus)*100) || 0, color: 'bg-slate-400', icon: Settings, iconColor: 'text-slate-500' }
+      ]
+    });
+  }, [appliedFilters]);
+
+  // ==========================================
+  // 4. HANDLERS
+  // ==========================================
+  const handleApply = () => setAppliedFilters({ ...filters });
+  const handleLogout = () => alert("Logout berhasil!");
+  const handleViewDetail = () => navigate('/detail-cost');
+  
+  const openRekonDetail = (statusLabel) => {
+    const detailData = DUMMY_DB.filter(item => {
+       const start = appliedFilters.startDate ? appliedFilters.startDate : '2000-01-01';
+       const end = appliedFilters.endDate ? appliedFilters.endDate : '2100-01-01';
+       return item.status === statusLabel && (item.date >= start && item.date <= end);
+    });
+    setModalTitle(`Detail Data: ${statusLabel} (${detailData.length} TRX)`);
+    setModalData(detailData.slice(0, 50)); 
+    setIsModalOpen(true);
   };
 
-  const handleDownloadExcel = () => {
-    const headers = ['ID BILLING', 'GROUP MANDIRI', 'DESKRIPSI', 'PERIODE', 'KLASIFIKASI', 'TYPE', 'PRINCIPAL', 'STATUS REKON'];
-    const csvRows = displayedTransactions.map(row => [row.id, row.group, row.desc, row.periode, row.klasifikasi, row.type, row.principal, row.status].join(','));
-    const csvContent = [headers.join(','), ...csvRows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `Report_Transaksi_${startDate || 'All'}_to_${endDate || 'All'}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
+    const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
+    if(percent === 0) return null;
+    return (
+      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight="600" style={{ pointerEvents: 'none' }}>{`${(percent * 100).toFixed(0)}%`}</text>
+    );
   };
 
-  const getBadgeStyle = (type) => {
-    switch (type) { case 'MONTHLY': return 'bg-blue-50 text-blue-600'; case 'QUARTERLY': return 'bg-purple-50 text-purple-600'; case 'DAILY': return 'bg-emerald-50 text-emerald-600'; default: return 'bg-gray-100 text-gray-600'; }
-  };
-  const getStatusBadgeStyle = (status) => {
-    switch (status) { case 'Complete': return 'text-emerald-600 bg-emerald-50 font-bold'; case 'Progress': return 'text-yellow-600 bg-yellow-50 font-bold'; case 'Failed': return 'text-red-600 bg-red-50 font-bold'; default: return 'text-gray-500'; }
-  };
-  const getSidebarItemStyle = (pageName) => pageName === 'report' ? "p-2.5 bg-slate-100 text-slate-800 rounded-xl cursor-pointer transition-all shadow-sm ring-1 ring-slate-200" : "p-2.5 text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-xl cursor-pointer transition-all";
+  const customTooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '13px', fontWeight: '500', color: '#334155' };
+  const chartTimeLabel = appliedFilters.type === 'daily' ? 'Day' : appliedFilters.type === 'yearly' ? 'Year' : 'Month';
+  const isDaily = appliedFilters.type === 'daily';
 
+  // ==========================================
+  // 5. RENDER UI
+  // ==========================================
   return (
-    <div className="flex h-screen bg-[#f4f7f9] font-sans overflow-hidden relative">
-      {activeDropdown && <div className="fixed inset-0 z-40" onClick={closeDropdowns}></div>}
-
-      {/* SIDEBAR */}
-      <div className="w-[88px] fixed h-full flex flex-col items-center py-6 gap-6 bg-transparent z-10">
-        <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3 items-center w-14">
-          <div onClick={() => setCurrentPage('home')} className={getSidebarItemStyle('home')}><LayoutDashboard className="w-5 h-5" /></div>
-          <div onClick={() => setCurrentPage('debit-detail')} className={getSidebarItemStyle('debit-detail')}><CreditCard className="w-5 h-5" /></div>
-          <div onClick={() => setCurrentPage('credit-detail')} className={getSidebarItemStyle('credit-detail')}><FileText className="w-5 h-5" /></div>
-          <div onClick={() => setCurrentPage('acquiring-detail')} className={getSidebarItemStyle('acquiring-detail')}><ShoppingCart className="w-5 h-5" /></div>
-          <div onClick={() => setCurrentPage('report')} className={getSidebarItemStyle('report')}><Calendar className="w-5 h-5" strokeWidth={2.5} /></div>
+    <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative">
+      
+      {/* --- MODAL POPUP --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 z-50 flex justify-center items-center backdrop-blur-[2px] p-4 transition-opacity">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white rounded-t-2xl">
+              <h2 className="text-base sm:text-lg font-bold text-slate-800 tracking-tight">{modalTitle} {modalData.length === 50 && <span className="text-xs sm:text-sm font-normal text-slate-400 ml-2">(Showing first 50)</span>}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-700"><X size={20} strokeWidth={2} /></button>
+            </div>
+            <div className="overflow-auto rounded-b-2xl">
+              {modalData.length > 0 ? (
+                <table className="w-full text-left text-sm border-collapse min-w-[700px]">
+                  <thead className="bg-slate-50 sticky top-0 z-10">
+                    <tr>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">ID Transaksi</th>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">Merchant</th>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">Principal</th>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">Product</th>
+                      <th className="p-4 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Cost (Rp B)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {modalData.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
+                        <td className="p-4 font-medium text-slate-700">{row.id}</td><td className="p-4 text-slate-600">{row.date}</td>
+                        <td className="p-4 text-slate-600">{row.merchant}</td><td className="p-4 font-medium text-slate-800">{row.principal}</td>
+                        <td className="p-4 text-slate-600">{row.product}</td><td className="p-4 text-right font-semibold text-slate-800">{row.principalCost}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400"><AlertCircle size={48} strokeWidth={1.5} className="mb-4 text-slate-300" /><p className="text-sm font-medium">Tidak ada data untuk rentang waktu ini.</p></div>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="mt-auto bg-white p-3 rounded-2xl shadow-sm border border-gray-100 w-14 flex justify-center"><div className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl cursor-pointer"><LogOut className="w-5 h-5" /></div></div>
-      </div>
+      )}
 
-      <div className="flex-1 ml-[88px] p-8 overflow-y-auto h-full scroll-smooth">
+      {/* --- OVERLAY MOBILE MENU --- */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 bg-slate-900/50 z-30" onClick={() => setIsMobileMenuOpen(false)}></div>
+      )}
+
+      {/* --- SIDEBAR KIRI (Responsif) --- */}
+      <aside className={`absolute md:relative z-40 left-0 top-0 h-full bg-[#f8fafc] border-r border-slate-200/60 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-[104px] flex flex-col justify-between items-center py-6 shrink-0`}>
+        <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-sm border border-slate-100">
+          <button className="mb-8 text-slate-800 hover:text-blue-600 transition-colors md:cursor-default" onClick={() => setIsMobileMenuOpen(false)}>
+            <Menu size={26} strokeWidth={1.5} />
+          </button>
+          <nav className="flex flex-col gap-8 items-center">
+            <button className="text-blue-600 transition-colors" title="Dashboard"><CreditCard size={24} strokeWidth={1.5} /></button>
+            <button onClick={() => navigate('/detail-cost')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Cost"><Book size={24} strokeWidth={1.5} /></button>
+            <button className="text-slate-400 hover:text-blue-600 transition-colors" title="Store"><ShoppingCart size={24} strokeWidth={1.5} /></button>
+            <button className="text-slate-400 hover:text-blue-600 transition-colors" title="Reports"><FileText size={24} strokeWidth={1.5} /></button>
+            <button className="text-slate-400 hover:text-blue-600 transition-colors" title="Calendar"><CalendarIcon size={24} strokeWidth={1.5} /></button>
+          </nav>
+        </div>
         
-        {/* HEADER */}
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setCurrentPage('home')} className="p-1.5 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors shadow-sm cursor-pointer"><ArrowLeft className="w-5 h-5 text-gray-700" /></button>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Report Engine & Data Export</h1>
-            </div>
-            <p className="text-sm text-gray-500 mt-1 max-w-4xl font-medium">Modul ekspor data untuk penarikan laporan transaksi berdasarkan periode dan spesifikasi parameter.</p>
+        <div className="flex flex-col gap-4 relative">
+          <div className="relative flex justify-center">
+            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
+              <User size={22} strokeWidth={1.5} />
+              <ChevronUp size={14} strokeWidth={2} className={`absolute top-2 right-1 text-slate-400 transition-transform duration-300 ${isProfileOpen ? 'rotate-180 text-blue-500' : ''}`} />
+            </button>
+            {isProfileOpen && (
+              <div className="absolute left-[calc(100%+16px)] bottom-0 w-56 bg-white border border-slate-100 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] p-4 z-50 flex items-center gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                <div className="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center text-blue-600 shrink-0"><User size={20} strokeWidth={2} /></div>
+                <div><p className="text-[14px] font-bold text-slate-800 leading-tight">Hassan Ali</p><p className="text-[12px] text-slate-500 font-medium">Administrator</p></div>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2.5 bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 hover:bg-gray-50 cursor-pointer"><div className="bg-blue-100 p-1.5 rounded-lg"><User className="w-4 h-4 text-blue-600" /></div><span className="text-[13px] font-semibold text-gray-700">Admin@gmail.com</span><ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" /></div>
+          <button onClick={handleLogout} className="bg-white rounded-[1.25rem] w-14 h-14 flex items-center justify-center shadow-sm border border-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors"><LogOut size={22} strokeWidth={1.5} className="transform rotate-180" /></button>
+        </div>
+      </aside>
+
+      {/* --- KONTEN DASBOR UTAMA --- */}
+      <main className="flex-1 flex flex-col h-screen overflow-x-hidden overflow-y-auto" onClick={() => setIsProfileOpen(false)}>
+        
+        {/* MOBILE HEADER BAR */}
+        <div className="md:hidden flex justify-between items-center bg-white px-5 py-4 border-b border-slate-200 sticky top-0 z-20">
+          <button onClick={() => setIsMobileMenuOpen(true)} className="text-slate-700 hover:text-blue-600"><Menu size={24} /></button>
+          <h1 className="font-bold text-lg text-slate-900 tracking-tight">Dashboard</h1>
+          <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-blue-600"><User size={16} /></div>
         </div>
 
-        {/* EXPORT SECTION */}
-        <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-100 flex flex-col mb-8">
-          <div className="flex items-center gap-4 mb-8 pb-6 border-b border-gray-100">
-            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
-              <Download className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold tracking-tight text-gray-900">Konfigurasi Ekspor Laporan</h2>
-              <p className="text-xs text-gray-500 font-medium mt-1">Lengkapi parameter rentang waktu di bawah ini untuk menyaring data sebelum diekspor.</p>
-            </div>
-          </div>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-            <div className="flex flex-col gap-2">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Periode Tanggal Awal</label>
-              <div className="relative overflow-hidden rounded-xl">
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                <div className="w-full border border-gray-200 bg-gray-50 p-3.5 flex items-center gap-3 shadow-sm hover:border-blue-400 transition-colors"><CalendarIcon className="w-5 h-5 text-blue-600" /><span className={`text-sm font-semibold ${startDate ? 'text-gray-900' : 'text-gray-400'}`}>{startDate || "Pilih tanggal awal..."}</span></div>
-              </div>
+          {/* --- TOP BANNER (HEADER BIRU) --- */}
+          <div className="w-full bg-[#0A3A6A] rounded-xl flex justify-between items-center px-4 sm:px-6 py-4 mb-8 shadow-md">
+            {/* Ganti src dengan path logo Mandiri Anda */}
+            <div className="shrink-0 flex items-center">
+              <img src="/logo-bank-mandiri.webp" alt="logo-bank-mandiri" className="h-6 sm:h-8 object-contain" />
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Periode Tanggal Akhir</label>
-              <div className="relative overflow-hidden rounded-xl">
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                <div className="w-full border border-gray-200 bg-gray-50 p-3.5 flex items-center gap-3 shadow-sm hover:border-blue-400 transition-colors"><CalendarIcon className="w-5 h-5 text-blue-600" /><span className={`text-sm font-semibold ${endDate ? 'text-gray-900' : 'text-gray-400'}`}>{endDate || "Pilih tanggal akhir..."}</span></div>
-              </div>
+
+            <div className="text-center flex-1 px-4 hidden md:block">
+              <h2 className="text-white text-lg lg:text-[22px] font-bold tracking-wide">
+                Dashboard Principal Fee eChannel Transaction
+              </h2>
+              <p className="text-white text-xs lg:text-[13px] font-normal mt-1 opacity-90 tracking-widest">
+                ELECTRONIC CHANNEL OPERATIONS GROUP
+              </p>
+            </div>
+
+            {/* Ganti src dengan path logo Danantara Anda */}
+            <div className="shrink-0 flex items-center">
+              <img src="/nama-file-logo-danantara.png" alt="Danantara" className="h-8 sm:h-10 object-contain" />
             </div>
           </div>
 
-          {/* TOMBOL SUBMIT KECIL DI KANAN BAWAH KALENDER */}
-          <div className="flex justify-end mb-8">
-            <button onClick={handleDateSubmit} className="bg-slate-500 hover:bg-slate-600 text-white px-8 py-2.5 rounded-lg font-semibold text-xs transition-all shadow-sm active:scale-[0.98]">
-              Submit
-            </button>
-          </div>
-
-          <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex justify-between items-center">
-            <div className="text-sm">
-              <span className="font-semibold text-gray-700">Total data siap diekspor: </span>
-              <span className="font-bold text-blue-600">{displayedTransactions.length} Transaksi</span>
-            
+          {/* Header & Filter (Hanya menyisakan sub-teks di kiri, filter di kanan) */}
+          <header className="flex flex-col xl:flex-row justify-between items-start mb-8 gap-5">
+            <div className="max-w-2xl mt-1">
+              <p className="text-[15px] text-slate-500 leading-relaxed font-medium">
+                Peningkatan biaya transaksi principal & switcher seiring dengan pertumbuhan transaksi dan menunjukkan tren yang sehat.
+              </p>
             </div>
-            {/* TOMBOL EKSPOR BIRU TERANG */}
-            <button onClick={handleDownloadExcel} className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-7 py-3 rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/30 active:scale-[0.98]">
-              <Download className="w-4 h-4" /> Ekspor (.CSV)
-            </button>
-          </div>
-        </div>
 
-        {/* TABEL TRANSAKSI UNTUK REPORT */}
-        <div className="bg-white rounded-2xl shadow-sm p-7 border border-gray-100 flex flex-col mb-8">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-lg font-bold tracking-tight text-gray-900">Konfigurasi Transaksi</h2>
-            </div>
-            <div className="flex items-center gap-2 relative z-50">
-              {[{ key: 'group', label: 'Group Mandiri' }, { key: 'klasifikasi', label: 'Klasifikasi' }, { key: 'principal', label: 'Principal' }, { key: 'type', label: 'Type' }, { key: 'status', label: 'Status' }].map((f) => (
-                <div key={f.key} className="relative">
-                  <button onClick={() => setActiveDropdown(activeDropdown === f.key ? null : f.key)} className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-semibold transition-all shadow-sm ${activeDropdown === f.key || filters[f.key] !== 'All' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}><Settings2 className={`w-3.5 h-3.5 ${filters[f.key] !== 'All' ? 'text-blue-600' : 'text-gray-400'}`} /> {filters[f.key] === 'All' ? f.label : filters[f.key]}</button>
-                  {activeDropdown === f.key && (
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-50">
-                      {FILTER_OPTIONS[f.key].map(opt => (<div key={opt} onClick={() => { setFilters({...filters, [f.key]: opt}); closeDropdowns(); }} className="px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer flex justify-between items-center"><span className={filters[f.key] === opt ? 'font-bold text-blue-600' : ''}>{opt}</span>{filters[f.key] === opt && <CheckSquare className="w-4 h-4 text-blue-600" />}</div>))}
-                    </div>
-                  )}
+            <div className="flex flex-col items-start xl:items-end gap-3 w-full xl:w-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto">
+                  <CalendarIcon size={18} className="text-slate-400 shrink-0" />
+                  <input type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer" value={filters.startDate} onChange={(e) => setFilters({...filters, startDate: e.target.value})} />
                 </div>
-              ))}
-              <div className="w-px h-6 bg-gray-200 mx-1"></div>
-              <button onClick={handleTableSubmit} className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 text-white border border-gray-900 rounded-lg text-xs font-bold hover:bg-gray-800 transition-all shadow-sm"><Filter className="w-3.5 h-3.5" /> Apply</button>
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full sm:w-auto">
+                  <span className="text-[13px] font-semibold text-slate-400 shrink-0">-</span>
+                  <CalendarIcon size={18} className="text-slate-400 shrink-0 ml-1" />
+                  <input type="date" className="text-[13px] font-semibold text-slate-700 outline-none w-full sm:w-auto bg-transparent cursor-pointer" value={filters.endDate} onChange={(e) => setFilters({...filters, endDate: e.target.value})} />
+                </div>
+                <div className="relative flex items-center w-full sm:w-auto">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
+                    <Filter size={18} className="text-slate-400 shrink-0" />
+                    <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
+                      <option value="all">All Data</option><option value="daily">Daily View</option><option value="monthly">Monthly View</option><option value="yearly">Yearly View</option>
+                    </select>
+                    <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">
+                Apply Filter
+              </button>
             </div>
-          </div>
-          <div className="overflow-y-auto max-h-[420px] rounded-xl border border-gray-100 custom-scrollbar relative">
-            {displayedTransactions.length > 0 ? (
-              <table className="w-full text-left text-gray-600">
-                <thead className="text-[10px] font-bold text-gray-500 uppercase bg-gray-50 border-b border-gray-100 tracking-wider sticky top-0 z-10 shadow-sm"><tr><th className="px-5 py-3.5">ID BILLING</th><th className="px-5 py-3.5">GROUP MANDIRI</th><th className="px-5 py-3.5">DESKRIPSI</th><th className="px-5 py-3.5">PERIODE</th><th className="px-5 py-3.5">KLASIFIKASI</th><th className="px-5 py-3.5">TYPE</th><th className="px-5 py-3.5">PRINCIPAL</th><th className="px-5 py-3.5 text-center">STATUS REKON</th></tr></thead>
-                <tbody className="text-[13px]">
-                  {displayedTransactions.map((row, index) => (
-                    <tr key={index} className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors"><td className="px-5 py-4 font-bold text-gray-900">{row.id}</td><td className={`px-5 py-4 font-semibold ${row.group === 'Issuer Debit' ? 'text-blue-600' : 'text-gray-600'}`}>{row.group}</td><td className="px-5 py-4 text-gray-400">{row.desc}</td><td className="px-5 py-4 text-gray-500 font-medium">{row.periode}</td><td className="px-5 py-4">{row.klasifikasi}</td><td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wide uppercase ${getBadgeStyle(row.type)}`}>{row.type}</span></td><td className="px-5 py-4 font-bold text-gray-900">{row.principal}</td><td className="px-5 py-4 text-center"><span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wide ${getStatusBadgeStyle(row.status)}`}>{row.status}</span></td></tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (<div className="flex flex-col items-center justify-center h-48 text-gray-400 bg-gray-50/50"><p className="font-semibold text-xs">Data transaksi tidak ditemukan berdasarkan filter yang diterapkan.</p></div>)}
+          </header>
+
+          <div className="grid grid-cols-12 gap-5 pb-10">
+            
+            {/* --- KARTU SUMMARY --- */}
+            {[
+              { label: 'Sales Volume', value: `Rp ${dashboardData.summary.sales} T`, icon: BarChart2, trend: '▲ 12.4% YoY', tColor: 'text-emerald-600' },
+              { label: 'Total Principal Cost', value: `Rp ${dashboardData.summary.cost} B`, icon: CreditCard, trend: '▲ 8.1% YoY', tColor: 'text-emerald-600' },
+              { label: 'Cost Rate', value: `${dashboardData.summary.rate} bps`, icon: Clock, trend: '▼ -0.01 bps vs PY', tColor: 'text-rose-500' }
+            ].map((card, idx) => (
+              <div key={idx} className="col-span-12 sm:col-span-4 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-[3px] bg-amber-400"></div>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{card.label}</p>
+                <h2 className="text-[24px] xl:text-[26px] font-bold text-slate-800 tracking-tight mb-2.5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform"><card.icon size={20} strokeWidth={1.5} /></div>
+                  {card.value}
+                </h2>
+                <p className={`text-[13px] font-semibold ${card.tColor}`}>{card.trend}</p>
+              </div>
+            ))}
+
+            {/* --- GRAFIK BESAR --- */}
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Principal Cost by {chartTimeLabel}</h3>
+                <button onClick={handleViewDetail} className="flex items-center gap-1.5 text-[13px] sm:text-[14px] font-bold text-blue-600 bg-blue-50 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl group shadow-sm">View Detail <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" /></button>
+              </div>
+              <div className="flex-1 w-full -ml-4 sm:ml-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={dashboardData.chartData} margin={{top: 10, bottom: isDaily ? 20 : 0, right: 10}}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} angle={isDaily ? -45 : 0} textAnchor={isDaily ? "end" : "center"} height={isDaily ? 60 : 30} />
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={-5} width={40} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={5} width={40} />
+                    <Tooltip contentStyle={customTooltipStyle} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
+                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol (T)" fill="#2563eb" barSize={isDaily ? 8 : 16} radius={[4, 4, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Principal Cost (B)" stroke="#f59e0b" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#f59e0b'}} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
+              <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost Rate (bps) by {chartTimeLabel}</h3>
+              <div className="flex-1 w-full -ml-4 sm:ml-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dashboardData.chartData} margin={{top: 10, bottom: isDaily ? 20 : 0, right: 10}}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} angle={isDaily ? -45 : 0} textAnchor={isDaily ? "end" : "center"} height={isDaily ? 60 : 30}/>
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} domain={['dataMin - 0.005', 'dataMax + 0.005']} dx={-5} width={45} />
+                    <Tooltip contentStyle={customTooltipStyle} />
+                    <Line type="monotone" dataKey="costRate" name="Cost Rate (bps)" stroke="#2563eb" strokeWidth={3} dot={{r: 4, fill: '#fff', stroke: '#2563eb'}} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* --- KARTU BAWAH --- */}
+            <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
+              <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-4 text-center sm:text-left">Cost by Principal</h3>
+              <div className="flex-1 flex flex-col xl:flex-row items-center justify-center gap-4">
+                <div className="w-full xl:w-[55%] h-[180px] xl:h-full max-w-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={[{ name: 'Visa', value: dashboardData.principalStats.visa.pct }, { name: 'Mastercard', value: dashboardData.principalStats.mc.pct }]} innerRadius="50%" outerRadius="90%" dataKey="value" labelLine={false} label={renderCustomizedLabel} stroke="#ffffff" strokeWidth={3}>
+                        <Cell fill="#1e3a8a" /><Cell fill="#3b82f6" />
+                      </Pie>
+                      <Tooltip contentStyle={customTooltipStyle} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="w-full xl:w-[45%] flex flex-row xl:flex-col justify-center gap-4 xl:gap-5">
+                  <div className="flex items-start gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#1e3a8a] mt-1 shrink-0"></div>
+                    <div><p className="text-slate-800 font-bold text-[12px] lg:text-[13px]">Visa: {dashboardData.principalStats.visa.pct}%</p><p className="text-slate-500 font-medium text-[11px] lg:text-[12px] mt-0.5 leading-snug">{dashboardData.principalStats.visa.cost} B <br/><span className="text-slate-400">({dashboardData.principalStats.visa.rate} bps)</span></p></div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-3 h-3 rounded-full bg-[#3b82f6] mt-1 shrink-0"></div>
+                    <div><p className="text-slate-800 font-bold text-[12px] lg:text-[13px]">Mastercard: {dashboardData.principalStats.mc.pct}%</p><p className="text-slate-500 font-medium text-[11px] lg:text-[12px] mt-0.5 leading-snug">{dashboardData.principalStats.mc.cost} B <br/><span className="text-slate-400">({dashboardData.principalStats.mc.rate} bps)</span></p></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
+              <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-2 flex justify-center sm:justify-start gap-1.5 items-center">
+                Cost by Product <span className="text-[12px] text-slate-400 font-medium">(Rp B)</span>
+              </h3>
+              <div className="flex-1 w-full pt-4 min-h-[180px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dashboardData.productStats} layout="vertical" margin={{ top: 0, right: 35, left: -10, bottom: 0 }}>
+                    <XAxis type="number" tick={{fontSize: 11, fill: '#94a3b8'}} axisLine={{stroke: '#e2e8f0'}} tickLine={false} />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} width={70} tick={{fontSize: 12, fill: '#475569', fontWeight: 600}} />
+                    <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={customTooltipStyle} />
+                    <Bar dataKey="value" fill="#2563eb" barSize={20} radius={[0, 4, 4, 0]} label={{ position: 'right', fill: '#475569', fontSize: 11, fontWeight: 700 }} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="col-span-12 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
+              <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-6 text-center sm:text-left">Rekonsiliasi Status</h3>
+              <div className="flex flex-col gap-4 flex-1 justify-center">
+                {dashboardData.statusStats.map((stat, idx) => (
+                  <div key={idx} onClick={() => openRekonDetail(stat.label)} className="flex items-center justify-between group cursor-pointer hover:bg-slate-50 p-2.5 -mx-2.5 rounded-xl transition-colors">
+                    <span className="flex items-center gap-2.5 text-slate-600 w-44 lg:w-48 text-[12px] lg:text-[13px] font-semibold"><stat.icon size={16} strokeWidth={2} className={stat.iconColor} /> {stat.label}</span>
+                    <div className="flex-1 mx-2 h-2 bg-slate-100 rounded-full overflow-hidden flex"><div className={`h-full ${stat.color} transition-all duration-700`} style={{ width: `${stat.val}%` }}></div></div>
+                    <span className={`font-bold text-[13px] w-8 text-right ${stat.iconColor}`}>{stat.val}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
-}
+};
+
+export default Dashboard;

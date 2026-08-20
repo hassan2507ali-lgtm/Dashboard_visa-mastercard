@@ -11,8 +11,8 @@ import {
 } from 'recharts';
 
 // === IMPORT GAMBAR LOGO DARI FOLDER SRC ===
-import LogoMandiri from './mandiri.png';
-import LogoDanantara from './danatara.png';
+import LogoDanantara from './mandiri.png';
+import LogoMandiri from './danatara.png';
 
 // ==========================================
 // 1. GENERATE DUMMY DATA UNTUK GRAFIK
@@ -52,20 +52,20 @@ const CHART_DB = generateChartData();
 const generateTableData = () => {
   const data = [];
   const types = ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'];
-  const principals = ['Visa', 'Mastercard', 'JCB', 'Lokal'];
+  const principals = ['Visa', 'Mastercard', 'JCB','CUP', 'QR Rintis', 'QR Jalin', 'NPG Jalin' , 'NPG Artajasa', 'NPG Rintis'];
   const groups = ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'];
   const months = ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'];
   const billingLines = ['2LS2000', '2ZN80637K', '3AM55021X', '9PQ11002A', '5TR90011B'];
   const descs = ['SMS Acquirer Non-Local Currency Fee', 'International ATM Inquiry', 'Cross Border Fee', 'Domestic Settlement', 'Monthly Maintenance Fee'];
   const currencies = ['IDR', 'USD'];
-
+  
   for (let i = 0; i < 75; i++) {
     const rateCur = currencies[Math.floor(Math.random() * currencies.length)];
     const rawAmount = (Math.random() * 50000000) + 1000000;
     const eqvIdr = rateCur === 'USD' ? rawAmount * 15500 : rawAmount;
 
     data.push({
-      id: i,
+      id: `TRX-${10000 + i}`,
       type: types[Math.floor(Math.random() * types.length)],
       principal: principals[Math.floor(Math.random() * principals.length)],
       group: groups[Math.floor(Math.random() * groups.length)],
@@ -85,10 +85,20 @@ const TABLE_DB = generateTableData();
 
 const FILTER_OPTIONS = {
   type: ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'],
-  principal: ['Visa', 'Mastercard', 'JCB', 'Lokal'],
+  principal: ['Visa', 'Mastercard', 'JCB','CUP', 'QR Rintis', 'QR Jalin', 'NPG Jalin' , 'NPG Artajasa', 'NPG Rintis'],
   group: ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'],
   month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'],
   rateCur: ['IDR', 'USD']
+};
+
+// Logika pemetaan bulan untuk komparasi rentang tanggal Start & End
+const MONTH_ORDER = {
+  'Januari 2026': 1,
+  'Februari 2026': 2,
+  'Maret 2026': 3,
+  'April 2026': 4,
+  'Mei 2026': 5,
+  'Juni 2026': 6,
 };
 
 const formatCurrency = (value) => {
@@ -118,8 +128,14 @@ const DetailCost = () => {
   });
   const [chartData, setChartData] = useState([]);
 
+  // State Tabel Diperbarui (Start Periode & End Periode)
   const [tableFilters, setTableFilters] = useState({
-    type: 'All', principal: 'All', group: 'All', month: 'All', rateCur: 'All'
+    type: 'All', 
+    principal: 'All', 
+    group: 'All', 
+    startPeriode: 'All', 
+    endPeriode: 'All', 
+    rateCur: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
@@ -179,10 +195,19 @@ const DetailCost = () => {
       const passType = appliedTableFilters.type === 'All' || row.type === appliedTableFilters.type;
       const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
       const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
-      const passMonth = appliedTableFilters.month === 'All' || row.month === appliedTableFilters.month;
       const passRateCur = appliedTableFilters.rateCur === 'All' || row.rateCur === appliedTableFilters.rateCur;
 
-      return passType && passPrincipal && passGroup && passMonth && passRateCur;
+      // Logika Filter Rentang Periode (Bulan)
+      let passPeriode = true;
+      const rowMonthIdx = MONTH_ORDER[row.month];
+      const startIdx = appliedTableFilters.startPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.startPeriode] : 0;
+      const endIdx = appliedTableFilters.endPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.endPeriode] : 999;
+
+      if (rowMonthIdx) {
+        passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
+      }
+
+      return passType && passPrincipal && passGroup && passRateCur && passPeriode;
     });
     setFilteredTableData(result);
     setCurrentPage(1); // Reset ke halaman 1 setiap kali filter diterapkan
@@ -278,16 +303,12 @@ const DetailCost = () => {
           
           {/* BANNER BIRU KEPALA */}
           <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md overflow-hidden">
-            <div className="shrink-0 flex items-center">
-              <img src={LogoMandiri} alt="Mandiri" className="h-5 sm:h-6 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" />
-            </div>
+            <div className="shrink-0 flex items-center"><img src={LogoMandiri} alt="Mandiri" className="h-10 sm:h-12 scale-[1.5] sm:scale-[1.8] transform origin-left object-contain" /></div>
             <div className="text-center flex-1 px-4 hidden md:block mt-1">
               <h2 className="text-white text-base lg:text-[18px] font-bold tracking-wide uppercase leading-none">Dashboard Principal Fee eChannel Transaction</h2>
               <p className="text-white text-[10px] lg:text-[11px] font-light mt-1 opacity-90 tracking-widest italic leading-none">ELECTRONIC CHANNEL OPERATIONS GROUP</p>
             </div>
-            <div className="shrink-0 flex items-center">
-              <img src={LogoDanantara} alt="Danantara" className="h-9 sm:h-12 scale-[2] sm:scale-[2.5] transform origin-right object-contain" />
-            </div>
+            <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
           {/* SECTION 1: CHART FILTERS */}
@@ -331,7 +352,7 @@ const DetailCost = () => {
             </div>
 
             <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner w-full md:w-auto">
-              {['Daily', 'Weekly', 'Monthly', 'Yearly'].map(view => (
+              {['Weekly', 'Monthly', 'Quarterly','Yearly'].map(view => (
                 <button 
                   key={view}
                   onClick={() => setChartFilters({...chartFilters, timeView: view})}
@@ -396,6 +417,27 @@ const DetailCost = () => {
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                 <div className="flex flex-wrap items-center justify-end gap-2 w-full">
                   
+                  {/* --- FILTER START PERIODE --- */}
+                  <div className="relative flex items-center">
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.startPeriode} onChange={(e) => setTableFilters({...tableFilters, startPeriode: e.target.value})}>
+                      <option value="All">Start Periode</option>
+                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
+                  {/* --- FILTER END PERIODE --- */}
+                  <div className="relative flex items-center">
+                    <span className="text-slate-400 mx-1 text-xs font-bold">-</span>
+                    <Settings2 size={13} className="text-slate-400 absolute left-5 pointer-events-none" />
+                    <select className="pl-9 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.endPeriode} onChange={(e) => setTableFilters({...tableFilters, endPeriode: e.target.value})}>
+                      <option value="All">End Periode</option>
+                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
                   {/* Filter Type */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
@@ -411,7 +453,7 @@ const DetailCost = () => {
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
                     <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
                       <option value="All">Principal</option>
-                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      {FILTER_OPTIONS.principal.filter(opt => opt !== 'All').map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -422,16 +464,6 @@ const DetailCost = () => {
                     <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.group} onChange={(e) => setTableFilters({...tableFilters, group: e.target.value})}>
                       <option value="All">Group</option>
                       {FILTER_OPTIONS.group.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                  </div>
-
-                  {/* Filter Month */}
-                  <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.month} onChange={(e) => setTableFilters({...tableFilters, month: e.target.value})}>
-                      <option value="All">Month</option>
-                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -459,7 +491,7 @@ const DetailCost = () => {
               <table className="w-full text-left border-collapse min-w-[1300px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['TYPE', 'PRINCIPAL', 'GROUP', 'MONTH', 'BILLING LINE', 'DESCRIPTION', 'RATE CUR', 'BILLING CURRENCY', 'TOTAL', 'EQV IDR'].map(head => (
+                    {['TYPE', 'PRINCIPAL', 'GROUP', 'PERIODE', 'BILLING LINE', 'DESCRIPTION', 'RATE CUR', 'TOTAL', 'EQV IDR'].map(head => (
                       <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head.includes('CURRENCY') || head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
                         {head}
                       </th>
@@ -486,9 +518,7 @@ const DetailCost = () => {
                         </td>
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.rateCur === 'USD' ? 'text-emerald-600' : 'text-slate-700'}`}>{row.rateCur}</td>
                         
-                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-600 text-right">
-                          {formatDecimal(row.billingCurrency)}
-                        </td>
+                        
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.total)}
                         </td>
@@ -500,7 +530,7 @@ const DetailCost = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="10" className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan="9" className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

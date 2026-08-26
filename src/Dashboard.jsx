@@ -4,7 +4,8 @@ import {
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
   BarChart2, Clock, CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
-  ArrowRight
+  ArrowRight,
+  CardSim
 } from 'lucide-react';
 import { 
   ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
@@ -16,7 +17,7 @@ import LogoMandiri from  './danatara.png';
 import LogoDanantara from './mandiri.png';
 
 // ==========================================
-// 1. GENERATE DUMMY DATABASE MASIF DENGAN VARIANSI TINGGI
+// 1. GENERATE DUMMY DATABASE MASIF DENGAN LOGIKA REALISTIS
 // ==========================================
 const generateDummyData = () => {
   const data = [];
@@ -26,41 +27,46 @@ const generateDummyData = () => {
   let i = 0;
   while (currentDate <= endDate) {
     const numTrx = Math.floor(Math.random() * 20) + 1; 
-    const dailyBias = Math.random(); 
 
     for(let j=0; j < numTrx; j++) {
       const typeRand = Math.random();
       const type = typeRand > 0.55 ? 'Visa' : (typeRand > 0.15 ? 'Mastercard' : 'Others');
       
-      let groupName = '';
-      if (dailyBias > 0.7) {
-        groupName = Math.random() > 0.3 ? 'Credit Card' : 'Acquiring';
-      } else if (dailyBias < 0.3) {
-        groupName = Math.random() > 0.3 ? 'Debit Card' : 'Acquiring';
-      } else {
-        groupName = Math.random() > 0.5 ? 'Acquiring' : (Math.random() > 0.5 ? 'Credit Card' : 'Debit Card');
-      }
+      const groupRand = Math.random();
+      let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
       
-      const subGroup = groupName === 'Acquiring' ? (Math.random() > 0.4 ? 'Interchange' : 'Service') : null;
+      let subGroup = null;
+      if (groupName === 'Acquiring') {
+        subGroup = Math.random() > 0.4 ? 'Interchange' : 'Service';
+      }
 
       const statusRand = Math.random();
       let status = '';
-      if (statusRand > 0.48) status = 'Done Rekon (No Deviasi)';
-      else if (statusRand > 0.3) status = 'Done Rekon (Deviasi)';
-      else if (statusRand > 0.1) status = 'Belum Rekon';
-      else status = 'Fixed Rate';
+      if (statusRand > 0.55) status = 'Done Rekon (No Deviasi)';
+      else if (statusRand > 0.35) status = 'Done Rekon (Deviasi)';
+      else if (statusRand > 0.20) status = 'Belum Rekon';
+      else if (statusRand > 0.10) status = 'Fixed Rate';
+      else status = 'New Billing';
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
       const baseCost = Math.random() * 5 + 0.5; 
       const spikeMultiplier = Math.random() > 0.85 ? 3 : 1; 
+      const principalCost = Number((baseCost * spikeMultiplier).toFixed(3));
+      
+      const salesVolume = Number((principalCost * (Math.random() * 10 + 5)).toFixed(0));
+      const costRate = Number((Math.random() * 0.01 + 0.035).toFixed(3));
 
       data.push({
         id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
-        date: dateString, principal: type, group: groupName, subGroup: subGroup, status: status,
-        salesVolume: Math.random() * 15 + 5, 
-        principalCost: Number((baseCost * spikeMultiplier).toFixed(3)), 
-        costRate: Number((Math.random() * 0.01 + 0.035).toFixed(3)),
+        date: dateString, 
+        principal: type, 
+        group: groupName, 
+        subGroup: subGroup, 
+        status: status,
+        salesVolume: salesVolume, 
+        principalCost: principalCost, 
+        costRate: costRate,
         merchant: `Merchant ${String.fromCharCode(65 + (i % 5))}`,
       });
       i++;
@@ -86,12 +92,12 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   // ==========================================
-  // 2. STATE MANAGEMENT
+  // 2. STATE MANAGEMENT (Fokus di Date & Principal)
   // ==========================================
   const [filters, setFilters] = useState({
     startDate: getFirstDayOfYear(), 
     endDate: getLastDayOfYear(),    
-    type: 'monthly'                    
+    principal: 'All' // Ganti dari 'type' menjadi 'principal'
   });
   
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
@@ -115,13 +121,19 @@ const Dashboard = () => {
   });
 
   // ==========================================
-  // 3. LOGIKA FILTERING & AGREGASI
+  // 3. LOGIKA FILTERING (Berfungsi Penuh untuk Date & Principal)
   // ==========================================
   useEffect(() => {
     const filteredDB = DUMMY_DB.filter(item => {
       const start = appliedFilters.startDate ? appliedFilters.startDate : '2000-01-01';
       const end = appliedFilters.endDate ? appliedFilters.endDate : '2100-01-01';
-      return item.date >= start && item.date <= end;
+      
+      // Filter berdasarkan Tanggal
+      const isDateMatch = item.date >= start && item.date <= end;
+      // Filter berdasarkan Principal
+      const isPrincipalMatch = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
+      
+      return isDateMatch && isPrincipalMatch;
     });
 
     if (filteredDB.length === 0) {
@@ -138,9 +150,8 @@ const Dashboard = () => {
     
     let creditService = 0, debitService = 0, acqInterchange = 0, acqService = 0;
     
-    const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0 };
+    const statusCount = { 'Done Rekon (No Deviasi)': 0, 'Done Rekon (Deviasi)': 0, 'Belum Rekon': 0, 'Fixed Rate': 0, 'New Billing': 0 };
     const chartMap = {};
-    const monthsShortEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
 
     filteredDB.forEach(item => {
@@ -164,27 +175,20 @@ const Dashboard = () => {
       const monthIndex = d.getMonth();
       const shortYear = String(year).slice(-2);
       
-      let groupKey = ''; let displayLabel = '';
-      
-      if (appliedFilters.type === 'daily') {
-        groupKey = item.date; 
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = monthsShortEn[monthIndex];
-        displayLabel = `${day} ${month} ${shortYear}`; 
-      } else if (appliedFilters.type === 'monthly') {
-        groupKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; 
-        displayLabel = `${monthsShort[monthIndex]} '${shortYear}`; 
-      } else if (appliedFilters.type === 'quarterly') {
-        const quarter = Math.floor(monthIndex / 3) + 1;
-        groupKey = `${year}-Q${quarter}`;
-        displayLabel = `Q${quarter} '${shortYear}`;
-      } else if (appliedFilters.type === 'yearly') {
-        groupKey = year.toString(); 
-        displayLabel = year.toString();
-      }
+      // Default langsung ke Monthly View karena dropdown filter view sudah dihapus
+      let groupKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`; 
+      let displayLabel = `${monthsShort[monthIndex]} '${shortYear}`; 
 
-      const iCost = item.principalCost * 0.7;
-      const sCost = item.principalCost * 0.3;
+      let iCost = 0;
+      let sCost = 0;
+      if (item.subGroup === 'Interchange') {
+        iCost = item.principalCost;
+      } else if (item.subGroup === 'Service') {
+        sCost = item.principalCost;
+      } else {
+        iCost = item.principalCost * 0.7;
+        sCost = item.principalCost * 0.3;
+      }
 
       if (!chartMap[groupKey]) chartMap[groupKey] = { label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, interchangeFee: 0, serviceFee: 0, count: 0 };
       
@@ -216,30 +220,16 @@ const Dashboard = () => {
         others: { cost: othersCost.toFixed(2), rate: (othersCost/othersVol || 0).toFixed(3), pct: Math.round((othersCost/totalCost)*100) || 0 }
       },
       groupStats: [
-        {
-          name: 'Credit Card', 
-          interchange: 0, 
-          service: Number(creditService.toFixed(2)),
-          totalSort: Number(creditService.toFixed(2))
-        }, 
-        {
-          name: 'Debit Card', 
-          interchange: 0, 
-          service: Number(debitService.toFixed(2)),
-          totalSort: Number(debitService.toFixed(2))
-        }, 
-        {
-          name: 'Acquiring', 
-          interchange: Number(acqInterchange.toFixed(2)),
-          service: Number(acqService.toFixed(2)),
-          totalSort: Number((acqInterchange + acqService).toFixed(2))
-        }
+        { name: 'Credit Card', interchange: 0, service: Number(creditService.toFixed(2)), totalSort: Number(creditService.toFixed(2)) }, 
+        { name: 'Debit Card', interchange: 0, service: Number(debitService.toFixed(2)), totalSort: Number(debitService.toFixed(2)) }, 
+        { name: 'Acquiring', interchange: Number(acqInterchange.toFixed(2)), service: Number(acqService.toFixed(2)), totalSort: Number((acqInterchange + acqService).toFixed(2)) }
       ].sort((a,b) => b.totalSort - a.totalSort),
       statusStats: [
         { label: 'Done Rekon (No Deviasi)', val: Math.round((statusCount['Done Rekon (No Deviasi)']/totalStatus)*100) || 0, color: 'bg-emerald-500', icon: CheckCircle2, iconColor: 'text-emerald-500' },
         { label: 'Done Rekon (Deviasi)', val: Math.round((statusCount['Done Rekon (Deviasi)']/totalStatus)*100) || 0, color: 'bg-amber-400', icon: AlertTriangle, iconColor: 'text-amber-500' },
         { label: 'Belum Rekon', val: Math.round((statusCount['Belum Rekon']/totalStatus)*100) || 0, color: 'bg-rose-500', icon: AlertCircle, iconColor: 'text-rose-500' },
-        { label: 'Fixed Rate', val: Math.round((statusCount['Fixed Rate']/totalStatus)*100) || 0, color: 'bg-slate-400', icon: Settings, iconColor: 'text-slate-500' }
+        { label: 'Fixed Rate', val: Math.round((statusCount['Fixed Rate']/totalStatus)*100) || 0, color: 'bg-slate-400', icon: Settings, iconColor: 'text-slate-500' },
+        { label: 'New Billing', val: Math.round((statusCount['New Billing']/totalStatus)*100) || 0, color: 'bg-slate-400', icon: CardSim, iconColor: 'text-slate-500' }
       ]
     });
   }, [appliedFilters]);
@@ -273,8 +263,7 @@ const Dashboard = () => {
   };
 
   const customTooltipStyle = { backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '13px', fontWeight: '500', color: '#334155' };
-  const chartTimeLabel = appliedFilters.type === 'monthly' ? 'Month' : appliedFilters.type === 'quarterly' ? 'Quarter' : 'Year';
-
+  
   const CustomGroupTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
@@ -359,7 +348,7 @@ const Dashboard = () => {
         onClick={() => setIsMobileMenuOpen(false)}
       ></div>
 
-      {/* --- SIDEBAR KIRI (Profesional & Melayang di Mobile) --- */}
+      {/* --- SIDEBAR KIRI --- */}
       <aside className={`fixed md:relative z-50 left-0 top-0 h-full bg-transparent md:bg-[#f8fafc] border-none md:border-r border-slate-200/60 transform transition-transform duration-300 ease-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-[100px] md:w-[104px] flex flex-col justify-between items-center py-6 sm:py-8 shrink-0`}>
         
         <div className="bg-white rounded-[2.5rem] flex flex-col items-center py-8 px-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border border-slate-100/50 md:border-slate-100">
@@ -450,34 +439,19 @@ const Dashboard = () => {
                 />
               </div>
 
-             {/* --- FILTER VIEW TYPE --- */}
+             {/* --- FILTER PRINCIPAL --- */}
               <div className="relative flex items-center w-full sm:w-auto">
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
                   <Filter size={18} className="text-slate-400 shrink-0" />
-                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
-                    <option value="monthly">Principal</option>
-                    <option value="quarterly">Visa</option>
-                    <option value="yearly">Master Card</option>
-                    <option value="yearly">JCB</option>
-                    <option value="yearly">QR Rintis'</option>
-                    <option value="monthly">NPG Jalin</option>
-                    <option value="quarterly">NPG Artajasa</option>
-                    <option value="yearly">NPG Rintis</option>
-               
-                    
-                  </select>
-                  <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* --- FILTER VIEW TYPE --- */}
-              <div className="relative flex items-center w-full sm:w-auto">
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
-                  <Filter size={18} className="text-slate-400 shrink-0" />
-                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.type} onChange={(e) => setFilters({...filters, type: e.target.value})}>
-                    <option value="monthly">Monthly View</option>
-                    <option value="quarterly">Quarterly View</option>
-                    <option value="yearly">Yearly View</option>
+                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.principal} onChange={(e) => setFilters({...filters, principal: e.target.value})}>
+                    <option value="All">Principal</option>
+                    <option value="Visa">Visa</option>
+                    <option value="Mastercard">Mastercard</option>
+                    <option value="JCB">JCB</option>
+                    <option value="QR Rintis">QR Rintis</option>
+                    <option value="NPG Jalin">NPG Jalin</option>
+                    <option value="NPG Artajasa">NPG Artajasa</option>
+                    <option value="NPG Rintis">NPG Rintis</option>
                   </select>
                   <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
                 </div>
@@ -529,7 +503,7 @@ const Dashboard = () => {
               </div>
             </div>
             
-            {/* CHART 2: COST TRANSACTION (DIKEMBALIKAN KE WARNA ABU-ABU & KUNING) */}
+            {/* CHART 2: COST TRANSACTION */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost Transaction</h3>
               <div className="flex-1 w-full -ml-4 sm:ml-0">
@@ -578,7 +552,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* CHART 4: COST BY GROUP (WARNA BIRU & KUNING) */}
+            {/* CHART 4: COST BY GROUP */}
             <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[320px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-[15px] mb-2 flex justify-center sm:justify-start gap-1.5 items-center">
                 Cost by Group <span className="text-[12px] text-slate-400 font-medium">(Rp B)</span>

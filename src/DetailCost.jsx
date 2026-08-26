@@ -47,35 +47,56 @@ const generateChartData = () => {
 const CHART_DB = generateChartData();
 
 // ==========================================
-// 2. GENERATE DUMMY DATA UNTUK TABEL BARU
+// 2. GENERATE DUMMY DATA UNTUK TABEL BARU (SESUAI EXCEL BARU)
 // ==========================================
+const TABLE_TEMPLATES = [
+  { jenis: 'Interchange', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange Local', desc: 'Mastercard Local', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Interchange', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange International', desc: 'Mastercard International', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Weekly', principal: 'Mastercard', group: '-', status: 'Current Billing', ica: '12375', billingLine: '2LS2000', desc: 'SMS Acquirer Non-Local Currency Fee', feeType: 'Acquirer Fees', category: 'Other Acquiring Services', subCategory: 'Currency Settlement' },
+  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Credit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Credit', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Debit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Debit', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'MTI', principal: 'Visa', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'MTI', desc: 'Biaya Acquiring MTI', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Monthly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4M6163460', desc: 'VISA ADVANCED AUTHORISATION AND VISA RISK MANAGER - DC', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Lisence', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4B1102010', desc: 'ACQUIRING LICENSE FEES - INTERNATIONAL', feeType: 'License Fees', category: 'License Fees', subCategory: 'Acquirer License Fee' },
+  { jenis: 'Service Fee', tagging: 'Quarterly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4CSF03100', desc: 'VISA GOLD CARD FEES - CONSUMER PRODUCTS', feeType: '-', category: '-', subCategory: '-' },
+];
+
 const generateTableData = () => {
   const data = [];
-  const types = ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'];
-  const principals = ['Visa', 'Mastercard', 'JCB','CUP', 'QR Rintis', 'QR Jalin', 'NPG Jalin' , 'NPG Artajasa', 'NPG Rintis'];
-  const groups = ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'];
   const months = ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'];
-  const billingLines = ['2LS2000', '2ZN80637K', '3AM55021X', '9PQ11002A', '5TR90011B'];
-  const descs = ['SMS Acquirer Non-Local Currency Fee', 'International ATM Inquiry', 'Cross Border Fee', 'Domestic Settlement', 'Monthly Maintenance Fee'];
-  const currencies = ['IDR', 'USD'];
   
   for (let i = 0; i < 75; i++) {
-    const rateCur = currencies[Math.floor(Math.random() * currencies.length)];
-    const rawAmount = (Math.random() * 50000000) + 1000000;
-    const eqvIdr = rateCur === 'USD' ? rawAmount * 15500 : rawAmount;
+    const template = TABLE_TEMPLATES[Math.floor(Math.random() * TABLE_TEMPLATES.length)];
+    const month = months[Math.floor(Math.random() * months.length)];
+    const rawAmount = (Math.random() * 500000000) + 1000000;
+    
+    // Eqv Idr bisa berbeda jika ada rate exchange, disimulasikan secara acak
+    const isUsd = Math.random() > 0.8;
+    const eqvIdr = isUsd ? rawAmount * 15500 : rawAmount;
+
+    // Buat format tanggal dummy sesuai dengan bulan terpilih (Contoh: 15-Jan-2026)
+    const day = Math.floor(Math.random() * 28) + 1;
+    const shortMonth = month.substring(0, 3);
+    const year = month.slice(-4);
+    const tanggal = `${day}-${shortMonth}-${year}`;
 
     data.push({
       id: `TRX-${10000 + i}`,
-      type: types[Math.floor(Math.random() * types.length)],
-      principal: principals[Math.floor(Math.random() * principals.length)],
-      group: groups[Math.floor(Math.random() * groups.length)],
-      month: months[Math.floor(Math.random() * months.length)],
-      billingLine: billingLines[Math.floor(Math.random() * billingLines.length)],
-      description: descs[Math.floor(Math.random() * descs.length)],
-      rateCur: rateCur,
-      billingCurrency: rawAmount,
+      jenisTransaksi: template.jenis,
+      tagging: template.tagging,
+      principal: template.principal,
+      group: template.group,
+      status: template.status,
+      tanggal: tanggal,
+      month: month, // Digunakan untuk filter logika Start/End Periode
+      ica: template.ica,
+      billingLine: template.billingLine,
+      description: template.desc,
       total: rawAmount,
-      eqvIdr: eqvIdr
+      eqvIdr: eqvIdr,
+      principalFeeType: template.feeType,
+      principalCategory: template.category,
+      principalSubCategory: template.subCategory
     });
   }
   return data;
@@ -83,12 +104,13 @@ const generateTableData = () => {
 
 const TABLE_DB = generateTableData();
 
+// Opsi dropdown disesuaikan dengan gambar
 const FILTER_OPTIONS = {
-  type: ['Service Fee', 'Interchange Fee', 'License Fee', 'Switching Fee'],
-  principal: ['Visa', 'Mastercard', 'JCB','CUP', 'QR Rintis', 'QR Jalin', 'NPG Jalin' , 'NPG Artajasa', 'NPG Rintis'],
-  group: ['Debit Card', 'Credit Card', 'Acquiring Interchange', 'Acquiring Service'],
-  month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'],
-  rateCur: ['IDR', 'USD']
+  jenisTransaksi: ['Interchange', 'Service Fee'],
+  tagging: ['Interchange Local', 'Interchange International', 'Weekly', 'Daily', 'MTI', 'Monthly', 'Lisence', 'Quarterly'],
+  principal: ['Visa', 'Mastercard'],
+  group: ['Acquiring', 'Credit', 'Debit'],
+  month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026']
 };
 
 // Logika pemetaan bulan untuk komparasi rentang tanggal Start & End
@@ -128,14 +150,14 @@ const DetailCost = () => {
   });
   const [chartData, setChartData] = useState([]);
 
-  // State Tabel Diperbarui (Start Periode & End Periode)
+  // State Tabel Diperbarui (Sesuai dengan kolom baru, Periode tetap dipertahankan)
   const [tableFilters, setTableFilters] = useState({
-    type: 'All', 
+    jenisTransaksi: 'All', 
+    tagging: 'All',
     principal: 'All', 
     group: 'All', 
     startPeriode: 'All', 
-    endPeriode: 'All', 
-    rateCur: 'All'
+    endPeriode: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
@@ -192,12 +214,12 @@ const DetailCost = () => {
   // ==========================================
   useEffect(() => {
     const result = TABLE_DB.filter(row => {
-      const passType = appliedTableFilters.type === 'All' || row.type === appliedTableFilters.type;
+      const passJenis = appliedTableFilters.jenisTransaksi === 'All' || row.jenisTransaksi === appliedTableFilters.jenisTransaksi;
+      const passTagging = appliedTableFilters.tagging === 'All' || row.tagging === appliedTableFilters.tagging;
       const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
       const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
-      const passRateCur = appliedTableFilters.rateCur === 'All' || row.rateCur === appliedTableFilters.rateCur;
 
-      // Logika Filter Rentang Periode (Bulan)
+      // Logika Filter Rentang Periode (Bulan) TETAP DIPERTAHANKAN
       let passPeriode = true;
       const rowMonthIdx = MONTH_ORDER[row.month];
       const startIdx = appliedTableFilters.startPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.startPeriode] : 0;
@@ -207,7 +229,7 @@ const DetailCost = () => {
         passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
       }
 
-      return passType && passPrincipal && passGroup && passRateCur && passPeriode;
+      return passJenis && passTagging && passPrincipal && passGroup && passPeriode;
     });
     setFilteredTableData(result);
     setCurrentPage(1); // Reset ke halaman 1 setiap kali filter diterapkan
@@ -227,8 +249,7 @@ const DetailCost = () => {
   const getBadgeType = (type) => {
     if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
     if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
-    if (type.includes('License')) return 'bg-blue-100 text-blue-700';
-    return 'bg-purple-100 text-purple-700';
+    return 'bg-slate-100 text-slate-700';
   };
 
   const isDaily = chartFilters.timeView === 'Daily';
@@ -438,12 +459,22 @@ const DetailCost = () => {
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Type */}
+                  {/* Filter Jenis Transaksi */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.type} onChange={(e) => setTableFilters({...tableFilters, type: e.target.value})}>
-                      <option value="All">Type</option>
-                      {FILTER_OPTIONS.type.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.jenisTransaksi} onChange={(e) => setTableFilters({...tableFilters, jenisTransaksi: e.target.value})}>
+                      <option value="All">Jenis Transaksi</option>
+                      {FILTER_OPTIONS.jenisTransaksi.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                  </div>
+
+                  {/* Filter Tagging */}
+                  <div className="relative flex items-center">
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.tagging} onChange={(e) => setTableFilters({...tableFilters, tagging: e.target.value})}>
+                      <option value="All">Tagging</option>
+                      {FILTER_OPTIONS.tagging.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -453,7 +484,7 @@ const DetailCost = () => {
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
                     <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
                       <option value="All">Principal</option>
-                      {FILTER_OPTIONS.principal.filter(opt => opt !== 'All').map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -468,16 +499,6 @@ const DetailCost = () => {
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Rate Cur */}
-                  <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.rateCur} onChange={(e) => setTableFilters({...tableFilters, rateCur: e.target.value})}>
-                      <option value="All">Rate Cur</option>
-                      {FILTER_OPTIONS.rateCur.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                  </div>
-
                 </div>
 
                 <button onClick={handleApplyTableFilter} className="flex items-center gap-1.5 px-6 py-2 bg-[#111827] hover:bg-black text-white rounded-lg text-[12px] font-bold shadow-sm transition-all active:scale-95">
@@ -488,11 +509,12 @@ const DetailCost = () => {
             </div>
 
             <div className="w-full overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[1300px]">
+              {/* Kolomnya diperbanyak, min-w dilebarkan agar tidak terjepit */}
+              <table className="w-full text-left border-collapse min-w-[1800px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['TYPE', 'PRINCIPAL', 'GROUP', 'PERIODE', 'BILLING LINE', 'DESCRIPTION', 'RATE CUR', 'TOTAL', 'EQV IDR'].map(head => (
-                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head.includes('CURRENCY') || head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
+                    {['JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
+                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
                         {head}
                       </th>
                     ))}
@@ -504,33 +526,36 @@ const DetailCost = () => {
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
                         
                         <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.type)}`}>
-                            {row.type}
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.jenisTransaksi)}`}>
+                            {row.jenisTransaksi}
                           </span>
                         </td>
                         
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.tagging}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.month}</td>
+                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-500">{row.status}</td>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.tanggal}</td>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.ica}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
                           {row.description}
                         </td>
-                        <td className={`py-4 px-5 text-[13px] font-bold ${row.rateCur === 'USD' ? 'text-emerald-600' : 'text-slate-700'}`}>{row.rateCur}</td>
-                        
-                        
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.total)}
                         </td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.eqvIdr)}
                         </td>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalFeeType}</td>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalCategory}</td>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalSubCategory}</td>
 
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="9" className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan="14" className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

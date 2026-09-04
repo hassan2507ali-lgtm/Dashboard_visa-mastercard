@@ -47,18 +47,19 @@ const generateChartData = () => {
 const CHART_DB = generateChartData();
 
 // ==========================================
-// 2. GENERATE DUMMY DATA UNTUK TABEL BARU (SESUAI EXCEL BARU)
+// 2. GENERATE DUMMY DATA UNTUK TABEL
+// Kolom diperlengkap sesuai instruksi baru
 // ==========================================
 const TABLE_TEMPLATES = [
-  { jenis: 'Interchange', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange Local', desc: 'Mastercard Local', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Interchange', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange International', desc: 'Mastercard International', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Service Fee', tagging: 'Weekly', principal: 'Mastercard', group: '-', status: 'Current Billing', ica: '12375', billingLine: '2LS2000', desc: 'SMS Acquirer Non-Local Currency Fee', feeType: 'Acquirer Fees', category: 'Other Acquiring Services', subCategory: 'Currency Settlement' },
-  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Credit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Credit', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Debit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Debit', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Service Fee', tagging: 'MTI', principal: 'Visa', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'MTI', desc: 'Biaya Acquiring MTI', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Service Fee', tagging: 'Monthly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4M6163460', desc: 'VISA ADVANCED AUTHORISATION AND VISA RISK MANAGER - DC', feeType: '-', category: '-', subCategory: '-' },
-  { jenis: 'Service Fee', tagging: 'Lisence', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4B1102010', desc: 'ACQUIRING LICENSE FEES - INTERNATIONAL', feeType: 'License Fees', category: 'License Fees', subCategory: 'Acquirer License Fee' },
-  { jenis: 'Service Fee', tagging: 'Quarterly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4CSF03100', desc: 'VISA GOLD CARD FEES - CONSUMER PRODUCTS', feeType: '-', category: '-', subCategory: '-' },
+  { category: 'Income', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', ica: '-', billingLine: 'Interchange Local', description: 'Mastercard Local', principalFeeType: '-', principalCategory: 'Interchange', principalSubCategory: 'Local' },
+  { category: 'Cost', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', ica: '-', billingLine: 'Interchange Intl', description: 'Mastercard International', principalFeeType: '-', principalCategory: 'Interchange', principalSubCategory: 'International' },
+  { category: 'Cost', tagging: 'Weekly', principal: 'Mastercard', group: 'Acquiring', ica: '12375', billingLine: '2LS2000', description: 'SMS Acquirer Non-Local Currency Fee', principalFeeType: 'Acquirer Fees', principalCategory: 'Other Acquiring Services', principalSubCategory: 'Currency Settlement' },
+  { category: 'Cost', tagging: 'Daily', principal: 'Visa', group: 'Credit Card', ica: '-', billingLine: 'Daily', description: 'Daily Service Visa Credit', principalFeeType: '-', principalCategory: 'Card Service Fee', principalSubCategory: 'Service' },
+  { category: 'Cost', tagging: 'Daily', principal: 'Visa', group: 'Debit Card', ica: '-', billingLine: 'Daily', description: 'Daily Service Visa Debit', principalFeeType: '-', principalCategory: 'Card Service Fee', principalSubCategory: 'Service' },
+  { category: 'Cost', tagging: 'MTI', principal: 'Visa', group: 'Acquiring', ica: '-', billingLine: 'MTI', description: 'Biaya Acquiring MTI', principalFeeType: '-', principalCategory: 'Transaction Service Fee', principalSubCategory: 'MTI' },
+  { category: 'Cost', tagging: 'Monthly', principal: 'Visa', group: 'Credit Card', ica: '-', billingLine: '4M6163460', description: 'VISA ADVANCED AUTHORISATION', principalFeeType: '-', principalCategory: 'Reports', principalSubCategory: 'Risk Manager' },
+  { category: 'Cost', tagging: 'Lisence', principal: 'Visa', group: 'Acquiring', ica: '-', billingLine: '4B1102010', description: 'ACQUIRING LICENSE FEES', principalFeeType: 'License Fees', principalCategory: 'License Fees', principalSubCategory: 'Acquirer License Fee' },
+  { category: 'Cost', tagging: 'Quarterly', principal: 'Visa', group: 'Debit Card', ica: '-', billingLine: '4CSF03100', description: 'VISA GOLD CARD FEES', principalFeeType: 'Acquirer Assessments', principalCategory: 'Acquirer Assessments', principalSubCategory: 'Consumer Products' },
 ];
 
 const generateTableData = () => {
@@ -70,11 +71,11 @@ const generateTableData = () => {
     const month = months[Math.floor(Math.random() * months.length)];
     const rawAmount = (Math.random() * 500000000) + 1000000;
     
-    // Eqv Idr bisa berbeda jika ada rate exchange, disimulasikan secara acak
+    // Eqv Idr bisa berbeda jika ada rate exchange (USD/IDR), disimulasikan secara acak
     const isUsd = Math.random() > 0.8;
     const eqvIdr = isUsd ? rawAmount * 15500 : rawAmount;
 
-    // Buat format tanggal dummy sesuai dengan bulan terpilih (Contoh: 15-Jan-2026)
+    // Format tanggal dummy
     const day = Math.floor(Math.random() * 28) + 1;
     const shortMonth = month.substring(0, 3);
     const year = month.slice(-4);
@@ -82,21 +83,20 @@ const generateTableData = () => {
 
     data.push({
       id: `TRX-${10000 + i}`,
-      jenisTransaksi: template.jenis,
+      category: template.category,
       tagging: template.tagging,
       principal: template.principal,
       group: template.group,
-      status: template.status,
       tanggal: tanggal,
-      month: month, // Digunakan untuk filter logika Start/End Periode
       ica: template.ica,
       billingLine: template.billingLine,
-      description: template.desc,
-      total: rawAmount,
+      description: template.description,
+      amount: rawAmount,
       eqvIdr: eqvIdr,
-      principalFeeType: template.feeType,
-      principalCategory: template.category,
-      principalSubCategory: template.subCategory
+      principalFeeType: template.principalFeeType,
+      principalCategory: template.principalCategory,
+      principalSubCategory: template.principalSubCategory,
+      month: month // Untuk filter logika Start/End Periode
     });
   }
   return data;
@@ -104,16 +104,16 @@ const generateTableData = () => {
 
 const TABLE_DB = generateTableData();
 
-// Opsi dropdown disesuaikan dengan gambar
+// Opsi dropdown filter sesuai instruksi baru
 const FILTER_OPTIONS = {
-  jenisTransaksi: ['Interchange', 'Service Fee'],
-  tagging: ['Interchange Local', 'Interchange International', 'Weekly', 'Daily', 'MTI', 'Monthly', 'Lisence', 'Quarterly'],
-  principal: ['Visa', 'Mastercard'],
-  group: ['Acquiring', 'Credit', 'Debit'],
+  category: ['Cost', 'Income'],
+  group: ['Acquiring', 'Credit Card', 'Debit Card'],
+  billingLine: ['Interchange Local', 'Interchange Intl', '2LS2000', 'Daily', 'MTI', '4M6163460', '4B1102010', '4CSF03100'],
+  principalCategory: ['Interchange', 'Other Acquiring Services', 'Card Service Fee', 'Transaction Service Fee', 'Reports', 'License Fees', 'Acquirer Assessments'],
+  principalSubCategory: ['Local', 'International', 'Currency Settlement', 'Service', 'MTI', 'Risk Manager', 'Acquirer License Fee', 'Consumer Products'],
   month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026']
 };
 
-// Logika pemetaan bulan untuk komparasi rentang tanggal Start & End
 const MONTH_ORDER = {
   'Januari 2026': 1,
   'Februari 2026': 2,
@@ -150,14 +150,13 @@ const DetailCost = () => {
   });
   const [chartData, setChartData] = useState([]);
 
-  // State Tabel Diperbarui (Sesuai dengan kolom baru, Periode tetap dipertahankan)
+  // State Tabel
   const [tableFilters, setTableFilters] = useState({
-    jenisTransaksi: 'All', 
-    tagging: 'All',
-    principal: 'All', 
+    category: 'All', 
     group: 'All', 
-    startPeriode: 'All', 
-    endPeriode: 'All'
+    billingLine: 'All',
+    principalCategory: 'All',
+    principalSubCategory: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
@@ -214,43 +213,27 @@ const DetailCost = () => {
   // ==========================================
   useEffect(() => {
     const result = TABLE_DB.filter(row => {
-      const passJenis = appliedTableFilters.jenisTransaksi === 'All' || row.jenisTransaksi === appliedTableFilters.jenisTransaksi;
-      const passTagging = appliedTableFilters.tagging === 'All' || row.tagging === appliedTableFilters.tagging;
-      const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
+      const passCategory = appliedTableFilters.category === 'All' || row.category === appliedTableFilters.category;
       const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
+      const passBillingLine = appliedTableFilters.billingLine === 'All' || row.billingLine === appliedTableFilters.billingLine;
+      const passPrinCat = appliedTableFilters.principalCategory === 'All' || row.principalCategory === appliedTableFilters.principalCategory;
+      const passPrinSubCat = appliedTableFilters.principalSubCategory === 'All' || row.principalSubCategory === appliedTableFilters.principalSubCategory;
 
-      // Logika Filter Rentang Periode (Bulan) TETAP DIPERTAHANKAN
-      let passPeriode = true;
-      const rowMonthIdx = MONTH_ORDER[row.month];
-      const startIdx = appliedTableFilters.startPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.startPeriode] : 0;
-      const endIdx = appliedTableFilters.endPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.endPeriode] : 999;
-
-      if (rowMonthIdx) {
-        passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
-      }
-
-      return passJenis && passTagging && passPrincipal && passGroup && passPeriode;
+      return passCategory && passGroup && passBillingLine && passPrinCat && passPrinSubCat;
     });
     setFilteredTableData(result);
-    setCurrentPage(1); // Reset ke halaman 1 setiap kali filter diterapkan
+    setCurrentPage(1); 
   }, [appliedTableFilters]);
 
   const handleApplyTableFilter = () => {
     setAppliedTableFilters({ ...tableFilters });
   };
 
-  // Logika Data yang akan dirender di halaman aktif
   const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentTableData = filteredTableData.slice(startIndex, startIndex + itemsPerPage);
 
   const handleLogout = () => alert("Logout berhasil!");
-
-  const getBadgeType = (type) => {
-    if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
-    if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
-    return 'bg-slate-100 text-slate-700';
-  };
 
   const isDaily = chartFilters.timeView === 'Daily';
 
@@ -438,53 +421,52 @@ const DetailCost = () => {
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                 <div className="flex flex-wrap items-center justify-end gap-2 w-full">
                   
-                  {/* --- FILTER START PERIODE --- */}
+                  {/* Filter Category (Cost / Income) */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.startPeriode} onChange={(e) => setTableFilters({...tableFilters, startPeriode: e.target.value})}>
-                      <option value="All">Start Periode</option>
-                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.category} onChange={(e) => setTableFilters({...tableFilters, category: e.target.value})}>
+                      <option value="All">Category</option>
+                      {FILTER_OPTIONS.category.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* --- FILTER END PERIODE --- */}
+                  {/* Filter Billing Line */}
                   <div className="relative flex items-center">
-                    <span className="text-slate-400 mx-1 text-xs font-bold">-</span>
-                    <Settings2 size={13} className="text-slate-400 absolute left-5 pointer-events-none" />
-                    <select className="pl-9 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.endPeriode} onChange={(e) => setTableFilters({...tableFilters, endPeriode: e.target.value})}>
-                      <option value="All">End Periode</option>
-                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.billingLine} onChange={(e) => setTableFilters({...tableFilters, billingLine: e.target.value})}>
+                      <option value="All">Billing Line</option>
+                      {FILTER_OPTIONS.billingLine.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Jenis Transaksi */}
+                  {/* Filter Principal Category */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.jenisTransaksi} onChange={(e) => setTableFilters({...tableFilters, jenisTransaksi: e.target.value})}>
-                      <option value="All">Jenis Transaksi</option>
-                      {FILTER_OPTIONS.jenisTransaksi.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalCategory} onChange={(e) => setTableFilters({...tableFilters, principalCategory: e.target.value})}>
+                      <option value="All">Principal Category</option>
+                      {FILTER_OPTIONS.principalCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Tagging */}
+                  {/* Filter Principal Sub Category */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.tagging} onChange={(e) => setTableFilters({...tableFilters, tagging: e.target.value})}>
-                      <option value="All">Tagging</option>
-                      {FILTER_OPTIONS.tagging.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalSubCategory} onChange={(e) => setTableFilters({...tableFilters, principalSubCategory: e.target.value})}>
+                      <option value="All">Principal Sub Cat</option>
+                      {FILTER_OPTIONS.principalSubCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Principal */}
+                    {/* Filter Principal  fee type */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
-                      <option value="All">Principal</option>
-                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalSubCategory} onChange={(e) => setTableFilters({...tableFilters, principalSubCategory: e.target.value})}>
+                      <option value="All">Principal fee type</option>
+                      {FILTER_OPTIONS.principalSubCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -509,12 +491,11 @@ const DetailCost = () => {
             </div>
 
             <div className="w-full overflow-x-auto">
-              {/* Kolomnya diperbanyak, min-w dilebarkan agar tidak terjepit */}
               <table className="w-full text-left border-collapse min-w-[1800px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
-                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
+                    {['CATEGORY', 'TAGGING', 'PRINCIPAL/SWITCHER', 'GROUP', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'AMOUNT', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
+                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${(head === 'AMOUNT' || head === 'EQV IDR') ? 'text-right' : ''}`}>
                         {head}
                       </th>
                     ))}
@@ -526,23 +507,22 @@ const DetailCost = () => {
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
                         
                         <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.jenisTransaksi)}`}>
-                            {row.jenisTransaksi}
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.category === 'Income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {row.category}
                           </span>
                         </td>
                         
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.tagging}</td>
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.tagging}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
-                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-500">{row.status}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.tanggal}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.ica}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[250px] truncate" title={row.description}>
                           {row.description}
                         </td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
-                          {formatDecimal(row.total)}
+                          {formatDecimal(row.amount)}
                         </td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.eqvIdr)}
@@ -555,7 +535,7 @@ const DetailCost = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="14" className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan="13" className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

@@ -87,9 +87,9 @@ const Dashboard = () => {
   const [filters, setFilters] = useState({ principal: 'All' });
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
 
-  const [salesChartFilters, setSalesChartFilters] = useState({ date: 'Monthly', issuing: 'All' });
-  const [incomeChartFilters, setIncomeChartFilters] = useState({ date: 'Monthly', issuing: 'All' });
-  const [costChartFilters, setCostChartFilters] = useState({ date: 'Monthly', issuing: 'All' });
+  const [salesChartFilters, setSalesChartFilters] = useState({ issuing: 'All' });
+  const [incomeChartFilters, setIncomeChartFilters] = useState({ issuing: 'All' });
+  const [costChartFilters, setCostChartFilters] = useState({ issuing: 'All' });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -154,6 +154,7 @@ const Dashboard = () => {
       statusCount[item.status] = (statusCount[item.status] || 0) + 1;
     });
 
+    // Fungsi Helper untuk menarik data spesifik per Chart
     const getChartData = (baseDB, chartFilterConfig) => {
       const chartFilteredDB = baseDB.filter(item => {
         if (chartFilterConfig.issuing === 'All') return true;
@@ -168,53 +169,66 @@ const Dashboard = () => {
 
       chartFilteredDB.forEach(item => {
         const d = new Date(item.date);
-        let groupKey = ''; 
-        let displayLabel = ''; 
-
-        if (chartFilterConfig.date === 'Daily') {
-          groupKey = item.date;
-          displayLabel = `${String(d.getDate()).padStart(2,'0')} ${monthsShort[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
-        } else if (chartFilterConfig.date === 'Weekly') {
-          const startDate = new Date(d.getFullYear(), 0, 1);
-          const days = Math.floor((d - startDate) / (24 * 60 * 60 * 1000));
-          const weekNumber = Math.ceil((d.getDay() + 1 + days) / 7);
-          groupKey = `${d.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
-          displayLabel = `W${weekNumber} '${String(d.getFullYear()).slice(-2)}`;
-        } else {
-          groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; 
-          displayLabel = `${monthsShort[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
-        }
-
-        let iCost = 0; let sCost = 0;
-        if (item.subGroup === 'Interchange') { iCost = item.principalCost; } 
-        else if (item.subGroup === 'Service') { sCost = item.principalCost; } 
-        else { iCost = item.principalCost * 0.7; sCost = item.principalCost * 0.3; }
+        const groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; 
+        const displayLabel = `${monthsShort[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
 
         if (!chartMap[groupKey]) {
-          chartMap[groupKey] = { label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, interchangeFee: 0, serviceFee: 0, count: 0, sortKey: groupKey };
+          chartMap[groupKey] = { 
+            label: displayLabel, salesVolume: 0, principalCost: 0, totalRate: 0, count: 0, sortKey: groupKey,
+            interchangeFee: 0, serviceFee: 0,
+            incomeVisa: 0, incomeMC: 0, 
+            costVisa: 0, costMC: 0, costJCB: 0, costCUP: 0, costLocal: 0 
+          };
         }
         
         chartMap[groupKey].salesVolume += item.salesVolume; 
         chartMap[groupKey].principalCost += item.principalCost; 
         chartMap[groupKey].totalRate += item.costRate; 
+        chartMap[groupKey].count += 1;
+
+        // Base Distribution
+        let iCost = 0; let sCost = 0;
+        if (item.subGroup === 'Interchange') { iCost = item.principalCost; } 
+        else if (item.subGroup === 'Service') { sCost = item.principalCost; } 
+        else { iCost = item.principalCost * 0.7; sCost = item.principalCost * 0.3; }
+        
         chartMap[groupKey].interchangeFee += iCost;
         chartMap[groupKey].serviceFee += sCost;
-        chartMap[groupKey].count += 1;
+
+        // DISTRIBUSI LINE DINAMIS (Dirapikan agar tidak tumpang tindih / nabrak)
+        const pCost = item.principalCost;
+        const pInc = item.principalCost * 1.2; 
+
+        if (item.principal === 'Visa') {
+            chartMap[groupKey].costVisa += pCost * 2.8;   // Tertinggi
+            chartMap[groupKey].incomeVisa += pInc * 2.0; 
+        } else if (item.principal === 'Mastercard') {
+            chartMap[groupKey].costMC += pCost * 1.8;     // Menengah atas
+            chartMap[groupKey].incomeMC += pInc * 1.0; 
+        } else if (item.principal === 'JCB') {
+            chartMap[groupKey].costJCB += pCost * 1.1;    // Tengah
+        } else if (item.principal === 'CUP') {
+            chartMap[groupKey].costCUP += pCost * 0.2;    // Paling Bawah
+        } else {
+            chartMap[groupKey].costLocal += pCost * 0.6;  // Menengah Bawah
+        }
       });
 
-      let processedData = Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(data => ({
+      return Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(data => ({
         name: data.label,
         salesVolume: Number(data.salesVolume.toFixed(0)),
         principalCost: Number(data.principalCost.toFixed(2)),
         costRate: Number((data.totalRate / data.count).toFixed(3)),
         interchangeFee: Number(data.interchangeFee.toFixed(2)),
-        serviceFee: Number(data.serviceFee.toFixed(2))
+        serviceFee: Number(data.serviceFee.toFixed(2)),
+        incomeVisa: Number(data.incomeVisa.toFixed(2)),
+        incomeMC: Number(data.incomeMC.toFixed(2)),
+        costVisa: Number(data.costVisa.toFixed(2)),
+        costMC: Number(data.costMC.toFixed(2)),
+        costJCB: Number(data.costJCB.toFixed(2)),
+        costCUP: Number(data.costCUP.toFixed(2)),
+        costLocal: Number(data.costLocal.toFixed(2))
       }));
-
-      if (chartFilterConfig.date === 'Daily') processedData = processedData.slice(-30);
-      if (chartFilterConfig.date === 'Weekly') processedData = processedData.slice(-12);
-
-      return processedData;
     };
 
     const avgRate = (totalRate / globalFilteredDB.length).toFixed(3);
@@ -225,7 +239,7 @@ const Dashboard = () => {
       salesChartData: getChartData(globalFilteredDB, salesChartFilters),
       incomeChartData: getChartData(globalFilteredDB, incomeChartFilters),
       costChartData: getChartData(globalFilteredDB, costChartFilters),
-      defaultChartData: getChartData(globalFilteredDB, { date: 'Monthly', issuing: 'All' }),
+      defaultChartData: getChartData(globalFilteredDB, { issuing: 'All' }),
       principalStats: {
         visa: { cost: visaCost.toFixed(2), rate: (visaCost/visaVol || 0).toFixed(3), pct: Math.round((visaCost/totalCost)*100) || 0 },
         mc: { cost: mcCost.toFixed(2), rate: (mcCost/mcVol || 0).toFixed(3), pct: Math.round((mcCost/totalCost)*100) || 0 },
@@ -434,15 +448,13 @@ const Dashboard = () => {
 
           <div className="grid grid-cols-12 gap-5 pb-10">
             
-         {/* SUMMARY CARDS: FORMAT T & B, DINAMIS BERDASARKAN FILTER */}
+            {/* SUMMARY CARDS */}
             {[
               { label: 'Sales Volume', icon: BarChart2, trend: ' ', tColor: 'text-emerald-600' },
               { label: 'Total Principal Cost', icon: CreditCard, trend: '', tColor: 'text-emerald-600' },
               { label: 'Cost Per Volume', icon: Clock, trend: '', tColor: 'text-rose-500' },
               { label: 'Income', icon: BarChart2, trend: '', tColor: 'text-emerald-600' },
             ].map((card, idx) => {
-              
-              // MENDAPATKAN ANGKA DINAMIS DARI DASHBOARD_DATA SEHINGGA BERUBAH SAAT DI FILTER
               const getDynamicStats = (groupName) => {
                 const groupData = dashboardData.groupStats.find(g => g.name === groupName);
                 const baseVal = groupData ? groupData.totalSort : 0;
@@ -451,24 +463,18 @@ const Dashboard = () => {
                 
                 let amountStr = '';
                 if (card.label === 'Sales Volume') {
-                     // Angka dirapikan (contoh: 1.34 T, 12.50 T)
                      amountStr = ((baseVal % 8000) / 400 + 1.2).toFixed(2) + ' T';
                 } else if (card.label === 'Total Principal Cost') {
-                     // Angka dirapikan (contoh: 3.68 B)
                      amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
                 } else if (card.label === 'Cost Per Volume') {
-                     // Format nominal "T" sesuai instruksi (bukan persentase)
-                     amountStr = ((baseVal % 8000) / 600 + 1.1).toFixed(2) + ' T';
+                     // FORMAT DESIMAL MURNI UNTUK COST PER VOLUME
+                     amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
                 } else {
-                     // Income menggunakan "B"
                      amountStr = ((baseVal % 2500) / 400 + 0.8).toFixed(2) + ' B';
                 }
         
-                // Persentase indikator panah maksimal 3% (berubah dinamis sesuai data)
                 const pctNum = (baseVal % 2.5 + 0.1).toFixed(1);
                 const pct = `${pctNum}%`;
-                
-                // Panah naik turun yang stabil menggunakan nilai angka
                 const isUp = (Math.round(baseVal * 100) % 2 === 0);
         
                 return { amount: amountStr, pct, isUp };
@@ -483,8 +489,6 @@ const Dashboard = () => {
               return (
                 <div key={idx} className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden group flex flex-col justify-between">
                   <div className="absolute top-0 left-0 w-full h-[3px] bg-amber-400"></div>
-    
-                  {/* HEADER KARTU */}
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">{card.label}</p>
@@ -494,8 +498,6 @@ const Dashboard = () => {
                       <card.icon size={18} strokeWidth={1.5} />
                     </div>
                   </div>
-    
-                  {/* GRID KONTEN BARU DENGAN PANAH (ARROW) */}
                   <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-100">
                     {statsGrid.map((stat, i) => (
                       <div key={i} className="flex flex-col items-center">
@@ -503,8 +505,6 @@ const Dashboard = () => {
                         <div className="bg-slate-50/70 py-2 px-1 rounded-xl border border-slate-100 w-full text-center">
                           <span className="text-[13px] xl:text-[14px] font-bold text-slate-800">{stat.amount}</span>
                         </div>
-                        
-                        {/* ARROW & PERCENTAGE */}
                         <div className="flex items-center justify-center gap-0.5 mt-1">
                           <span className={`text-[9px] ${stat.isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {stat.isUp ? '▲' : '▼'}
@@ -520,12 +520,11 @@ const Dashboard = () => {
               );
             })}
 
-            {/* KIRI: CHART 1 SALES VOLUME VS COST TO VOLUME (TINGGI) */}
-            <div className="col-span-12 lg:col-span-6 lg:row-span-2 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[400px] lg:h-auto min-h-[520px]">
+            {/* KIRI: CHART 1 SALES VOLUME VS COST TO VOLUME (FULL WIDTH) */}
+            <div className="col-span-12 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[400px]">
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-3">
                 <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Cost To Volume</h3>
                 
-                {/* FILTER ISSUING SALES CHART */}
                 <div className="relative flex-1 xl:flex-none w-full xl:w-auto">
                   <select 
                     className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
@@ -543,7 +542,7 @@ const Dashboard = () => {
 
               <div className="flex-1 w-full sm:ml-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.salesChartData} margin={{top: 10, bottom: 0, right: 10}}>
+                  <ComposedChart data={dashboardData.salesChartData} margin={{top: 10, bottom: 0, right: 10, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={-5} width={40} />
@@ -551,19 +550,18 @@ const Dashboard = () => {
                     <Tooltip contentStyle={customTooltipStyle} />
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol (T)" fill="#2563eb" maxBarSize={50} radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost To Volume" stroke="#f59e0b" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#f59e0b'}} />
+                    {/* DOT DIHILANGKAN AGAR LEBIH RAPI */}
+                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost To Volume" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 5}} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
             
-            {/* KANAN ATAS: INTERCHANGE INCOME (PIPIH) */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[250px]">
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-3">
+            {/* KANAN ATAS: INTERCHANGE INCOME (2 LINE: VISA & MC) */}
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-2 gap-3">
                 <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Interchange Income</h3>
-                
-                {/* FILTER ISSUING INCOME CHART */}
-                <div className="relative flex-1 xl:flex-none w-full xl:w-auto">
+                <div className="relative flex-1 xl:flex-none w-full xl:w-auto z-10">
                   <select 
                     className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
                     value={incomeChartFilters.issuing} 
@@ -580,25 +578,26 @@ const Dashboard = () => {
 
               <div className="flex-1 w-full sm:ml-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.incomeChartData} margin={{top: 10, bottom: 0, right: 10}}>
+                  <ComposedChart data={dashboardData.incomeChartData} margin={{top: 0, bottom: 0, right: 5, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={5} width={40} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={40} />
                     <Tooltip contentStyle={customTooltipStyle} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Income" stroke="#10b981" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#10b981'}} />
+                    {/* 2 Lines untuk Income (Dot dihilangkan, warna dibedakan) */}
+                    <Line yAxisId="right" type="monotone" dataKey="incomeVisa" name="Visa" stroke="#1e3a8a" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
+                    <Line yAxisId="right" type="monotone" dataKey="incomeMC" name="Mastercard" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* KANAN BAWAH: INTERCHANGE COST (PIPIH) */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[250px]">
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-3">
+            {/* KANAN BAWAH: INTERCHANGE COST (5 LINE) */}
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-2 gap-3">
                 <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Interchange Cost</h3>
-                
-                {/* FILTER ISSUING COST CHART */}
-                <div className="relative flex-1 xl:flex-none w-full xl:w-auto">
+                <div className="relative flex-1 xl:flex-none w-full xl:w-auto z-10">
                   <select 
                     className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
                     value={costChartFilters.issuing} 
@@ -615,13 +614,19 @@ const Dashboard = () => {
 
               <div className="flex-1 w-full sm:ml-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.costChartData} margin={{top: 10, bottom: 0, right: 10}}>
+                  <ComposedChart data={dashboardData.costChartData} margin={{top: 0, bottom: 0, right: 5, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dy={10} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: '#64748b'}} dx={5} width={40} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={40} />
                     <Tooltip contentStyle={customTooltipStyle} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost" stroke="#ef4444" strokeWidth={3} dot={{r: 3, fill: '#fff', stroke: '#ef4444'}} />
+                    {/* 5 Lines untuk Cost (Dot dihilangkan, warna dibedakan agar mudah dibaca) */}
+                    <Line yAxisId="right" type="monotone" dataKey="costVisa" name="Visa" stroke="#1e3a8a" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
+                    <Line yAxisId="right" type="monotone" dataKey="costMC" name="Mastercard" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
+                    <Line yAxisId="right" type="monotone" dataKey="costJCB" name="JCB" stroke="#10b981" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
+                    <Line yAxisId="right" type="monotone" dataKey="costCUP" name="CUP" stroke="#8b5cf6" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
+                    <Line yAxisId="right" type="monotone" dataKey="costLocal" name="Local" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -648,7 +653,7 @@ const Dashboard = () => {
             {/* CHART 3: COST BY GROUP */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
               <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4 flex items-center gap-1.5">
-                Cost by Group <span className="text-[13px] text-slate-400 font-medium">(Rp T)</span>
+                Cost by Group <span className="text-[13px] text-slate-400 font-medium">(Rp B)</span>
               </h3>
               <div className="flex-1 w-full overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">

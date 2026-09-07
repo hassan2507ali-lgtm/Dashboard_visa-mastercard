@@ -494,7 +494,7 @@ const DetailCost = () => {
               <table className="w-full text-left border-collapse min-w-[1800px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['CATEGORY', 'TAGGING', 'PRINCIPAL/SWITCHER', 'GROUP', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'AMOUNT', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
+                    {['CATEGORY', 'TAGGING', 'PRINCIPAL/SWITCHER', 'GROUP', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
                       <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${(head === 'AMOUNT' || head === 'EQV IDR') ? 'text-right' : ''}`}>
                         {head}
                       </th>
@@ -521,9 +521,7 @@ const DetailCost = () => {
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[250px] truncate" title={row.description}>
                           {row.description}
                         </td>
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
-                          {formatDecimal(row.amount)}
-                        </td>
+                   
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.eqvIdr)}
                         </td>

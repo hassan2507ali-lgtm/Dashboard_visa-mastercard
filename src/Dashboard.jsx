@@ -84,7 +84,7 @@ const Dashboard = () => {
   // ==========================================
   // 2. STATE MANAGEMENT 
   // ==========================================
-  const [filters, setFilters] = useState({ principal: 'All' });
+  const [filters, setFilters] = useState({ periode: 'Agustus 2026', principal: 'All', group: 'All' });
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
 
   const [salesChartFilters, setSalesChartFilters] = useState({ issuing: 'All' });
@@ -117,8 +117,22 @@ const Dashboard = () => {
   // 3. LOGIKA FILTERING & AGREGASI
   // ==========================================
   useEffect(() => {
+    // Map Bulan untuk filter Periode
+    const periodMap = {
+      'Agustus 2026': '2026-08',
+      'Juli 2026': '2026-07',
+      'Juni 2026': '2026-06',
+      'Mei 2026': '2026-05',
+      'April 2026': '2026-04',
+      'All': 'All'
+    };
+    const targetPeriod = periodMap[appliedFilters.periode];
+
     const globalFilteredDB = DUMMY_DB.filter(item => {
-      return appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
+      const passPeriode = targetPeriod === 'All' || item.date.startsWith(targetPeriod);
+      const passPrincipal = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
+      const passGroup = appliedFilters.group === 'All' || item.group === appliedFilters.group;
+      return passPeriode && passPrincipal && passGroup;
     });
 
     if (globalFilteredDB.length === 0) {
@@ -154,7 +168,6 @@ const Dashboard = () => {
       statusCount[item.status] = (statusCount[item.status] || 0) + 1;
     });
 
-    // Fungsi Helper untuk menarik data spesifik per Chart
     const getChartData = (baseDB, chartFilterConfig) => {
       const chartFilteredDB = baseDB.filter(item => {
         if (chartFilterConfig.issuing === 'All') return true;
@@ -186,7 +199,6 @@ const Dashboard = () => {
         chartMap[groupKey].totalRate += item.costRate; 
         chartMap[groupKey].count += 1;
 
-        // Base Distribution
         let iCost = 0; let sCost = 0;
         if (item.subGroup === 'Interchange') { iCost = item.principalCost; } 
         else if (item.subGroup === 'Service') { sCost = item.principalCost; } 
@@ -195,22 +207,21 @@ const Dashboard = () => {
         chartMap[groupKey].interchangeFee += iCost;
         chartMap[groupKey].serviceFee += sCost;
 
-        // DISTRIBUSI LINE DINAMIS (Dirapikan agar tidak tumpang tindih / nabrak)
         const pCost = item.principalCost;
         const pInc = item.principalCost * 1.2; 
 
         if (item.principal === 'Visa') {
-            chartMap[groupKey].costVisa += pCost * 2.8;   // Tertinggi
+            chartMap[groupKey].costVisa += pCost * 2.8;   
             chartMap[groupKey].incomeVisa += pInc * 2.0; 
         } else if (item.principal === 'Mastercard') {
-            chartMap[groupKey].costMC += pCost * 1.8;     // Menengah atas
+            chartMap[groupKey].costMC += pCost * 1.8;     
             chartMap[groupKey].incomeMC += pInc * 1.0; 
         } else if (item.principal === 'JCB') {
-            chartMap[groupKey].costJCB += pCost * 1.1;    // Tengah
+            chartMap[groupKey].costJCB += pCost * 1.1;    
         } else if (item.principal === 'CUP') {
-            chartMap[groupKey].costCUP += pCost * 0.2;    // Paling Bawah
+            chartMap[groupKey].costCUP += pCost * 0.2;    
         } else {
-            chartMap[groupKey].costLocal += pCost * 0.6;  // Menengah Bawah
+            chartMap[groupKey].costLocal += pCost * 0.6;  
         }
       });
 
@@ -263,7 +274,18 @@ const Dashboard = () => {
   // ==========================================
   // 4. HANDLERS & CUSTOM COMPONENTS
   // ==========================================
-  const handleApply = () => setAppliedFilters({ ...filters });
+  const handleApply = () => {
+    setAppliedFilters({ ...filters });
+  };
+
+  const handleReset = () => {
+    setFilters({ periode: 'All', principal: 'All', group: 'All' });
+    setAppliedFilters({ periode: 'All', principal: 'All', group: 'All' });
+    setSalesChartFilters({ issuing: 'All' });
+    setIncomeChartFilters({ issuing: 'All' });
+    setCostChartFilters({ issuing: 'All' });
+  };
+
   const handleLogout = () => alert("Logout berhasil!");
   const handleViewDetail = () => navigate('/detail-cost');
   
@@ -313,6 +335,39 @@ const Dashboard = () => {
               </div>
             </div>
           )}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomInterchangeTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const baseVal = payload[0].value;
+      const isUp = Math.round(baseVal) % 2 === 0;
+      const dynamicPct = (baseVal % 2.5 + 0.1).toFixed(1);
+
+      return (
+        <div className="bg-white border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-4 text-[13px] text-slate-700 min-w-[200px] z-50">
+          <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
+          <div className="flex flex-col gap-1.5">
+            {payload.map((entry, index) => (
+              <div key={index} className="flex justify-between items-center text-[12px]">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
+                  <span className="text-slate-600 font-medium">{entry.name}:</span>
+                </div>
+                <span className="font-bold text-slate-800 ml-4">{entry.value}</span>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-3 pt-3 border-t border-slate-100 flex justify-center items-center gap-1.5 bg-slate-50/50 rounded-lg p-1.5">
+            <span className={`text-[12px] font-bold ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {isUp ? '▲' : '▼'} {dynamicPct}%
+            </span>
+            <span className="text-[11px] font-bold text-slate-800">vs Jul 2026</span>
+          </div>
         </div>
       );
     }
@@ -423,14 +478,40 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* HEADER & FILTER (HANYA PRINCIPAL) */}
-          <header className="flex justify-end mb-8 w-full">
-            <div className="flex flex-wrap items-center justify-end gap-3 w-full" onClick={(e) => e.stopPropagation()}>
-             <div className="relative flex items-center w-full sm:w-auto">
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl shadow-sm w-full">
-                  <Filter size={18} className="text-slate-400 shrink-0" />
-                  <select className="text-[13px] font-semibold text-slate-700 outline-none bg-transparent w-full appearance-none pr-6 z-10 cursor-pointer" value={filters.principal} onChange={(e) => setFilters({...filters, principal: e.target.value})}>
-                    <option value="All">Principal</option>
+          {/* HEADER & FILTER SEPERTI DI GAMBAR */}
+          <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 w-full gap-4">
+            <div className="flex flex-wrap items-end gap-3 w-full lg:w-auto" onClick={(e) => e.stopPropagation()}>
+              
+              {/* FILTER PERIODE */}
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
+                <div className="relative">
+                  <select 
+                    className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                    value={filters.periode} 
+                    onChange={(e) => setFilters({...filters, periode: e.target.value})}
+                  >
+                    <option value="All">All Periode</option>
+                    <option value="Agustus 2026">Agustus 2026</option>
+                    <option value="Juli 2026">Juli 2026</option>
+                    <option value="Juni 2026">Juni 2026</option>
+                    <option value="Mei 2026">Mei 2026</option>
+                    <option value="April 2026">April 2026</option>
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* FILTER PRINCIPAL */}
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Principal</label>
+                <div className="relative">
+                  <select 
+                    className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                    value={filters.principal} 
+                    onChange={(e) => setFilters({...filters, principal: e.target.value})}
+                  >
+                    <option value="All">All Principals</option>
                     <option value="Visa">Visa</option>
                     <option value="Mastercard">Mastercard</option>
                     <option value="JCB">JCB</option>
@@ -439,22 +520,56 @@ const Dashboard = () => {
                     <option value="NPG Artajasa">NPG Artajasa</option>
                     <option value="NPG Rintis">NPG Rintis</option>
                   </select>
-                  <ChevronDown size={16} className="text-slate-400 absolute right-3 pointer-events-none" />
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
               </div>
-              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2.5 rounded-xl transition-all shadow-sm w-full sm:w-auto">Apply</button>
+
+              {/* FILTER BUSINESS GROUP */}
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Business Group</label>
+                <div className="relative">
+                  <select 
+                    className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                    value={filters.group} 
+                    onChange={(e) => setFilters({...filters, group: e.target.value})}
+                  >
+                    <option value="All">All Groups</option>
+                    <option value="Acquiring">Acquiring</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Debit Card">Debit Card</option>
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* TOMBOL APPLY */}
+              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">
+                Apply
+              </button>
+
+              {/* TOMBOL RESET (HANYA TEKS DI KANAN APPLY) */}
+              <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">
+                Reset
+              </button>
+
+            </div>
+
+            {/* TEKS INFORMASI DATA (DI KANAN) */}
+            <div className="text-[11px] font-medium text-slate-500 whitespace-nowrap lg:pb-2">
+              Data per 31 Agu 2026 • Pembanding: Jul 2026
             </div>
           </header>
 
           <div className="grid grid-cols-12 gap-5 pb-10">
             
-            {/* SUMMARY CARDS */}
+            {/* SUMMARY CARDS: FORMAT T & B, DINAMIS BERDASARKAN FILTER */}
             {[
               { label: 'Sales Volume', icon: BarChart2, trend: ' ', tColor: 'text-emerald-600' },
               { label: 'Total Principal Cost', icon: CreditCard, trend: '', tColor: 'text-emerald-600' },
               { label: 'Cost Per Volume', icon: Clock, trend: '', tColor: 'text-rose-500' },
               { label: 'Income', icon: BarChart2, trend: '', tColor: 'text-emerald-600' },
             ].map((card, idx) => {
+              
               const getDynamicStats = (groupName) => {
                 const groupData = dashboardData.groupStats.find(g => g.name === groupName);
                 const baseVal = groupData ? groupData.totalSort : 0;
@@ -467,7 +582,6 @@ const Dashboard = () => {
                 } else if (card.label === 'Total Principal Cost') {
                      amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
                 } else if (card.label === 'Cost Per Volume') {
-                     // FORMAT DESIMAL MURNI UNTUK COST PER VOLUME
                      amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
                 } else {
                      amountStr = ((baseVal % 2500) / 400 + 0.8).toFixed(2) + ' B';
@@ -475,6 +589,7 @@ const Dashboard = () => {
         
                 const pctNum = (baseVal % 2.5 + 0.1).toFixed(1);
                 const pct = `${pctNum}%`;
+                
                 const isUp = (Math.round(baseVal * 100) % 2 === 0);
         
                 return { amount: amountStr, pct, isUp };
@@ -523,11 +638,11 @@ const Dashboard = () => {
             {/* KIRI: CHART 1 SALES VOLUME VS COST TO VOLUME (FULL WIDTH) */}
             <div className="col-span-12 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[400px]">
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-3">
-                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Sales Volume vs Cost To Volume</h3>
+                <h3 className="font-bold text-[#0f172a] tracking-tight text-[18px] sm:text-[20px]">Sales Volume vs Cost To Volume</h3>
                 
                 <div className="relative flex-1 xl:flex-none w-full xl:w-auto">
                   <select 
-                    className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
+                    className="pl-3 pr-7 py-1.5 w-full bg-white border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
                     value={salesChartFilters.issuing} 
                     onChange={(e) => setSalesChartFilters({...salesChartFilters, issuing: e.target.value})}
                   >
@@ -540,7 +655,7 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="flex-1 w-full sm:ml-0 overflow-hidden">
+              <div className="flex-1 w-full sm:ml-0 overflow-visible">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={dashboardData.salesChartData} margin={{top: 10, bottom: 0, right: 10, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -550,7 +665,6 @@ const Dashboard = () => {
                     <Tooltip contentStyle={customTooltipStyle} />
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol (T)" fill="#2563eb" maxBarSize={50} radius={[4, 4, 0, 0]} />
-                    {/* DOT DIHILANGKAN AGAR LEBIH RAPI */}
                     <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost To Volume" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 5}} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -558,12 +672,12 @@ const Dashboard = () => {
             </div>
             
             {/* KANAN ATAS: INTERCHANGE INCOME (2 LINE: VISA & MC) */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[280px]">
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-2 gap-3">
-                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Interchange Income</h3>
+                <h3 className="font-bold text-[#0f172a] tracking-tight text-[18px] sm:text-[20px]">Interchange Income</h3>
                 <div className="relative flex-1 xl:flex-none w-full xl:w-auto z-10">
                   <select 
-                    className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
+                    className="pl-3 pr-7 py-1.5 w-full bg-white border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
                     value={incomeChartFilters.issuing} 
                     onChange={(e) => setIncomeChartFilters({...incomeChartFilters, issuing: e.target.value})}
                   >
@@ -576,16 +690,16 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="flex-1 w-full sm:ml-0 overflow-hidden">
+              <div className="flex-1 w-full sm:ml-0 overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={dashboardData.incomeChartData} margin={{top: 0, bottom: 0, right: 5, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={40} />
-                    <Tooltip contentStyle={customTooltipStyle} />
-                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    {/* 2 Lines untuk Income (Dot dihilangkan, warna dibedakan) */}
+                    <Tooltip content={<CustomInterchangeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
+                    
                     <Line yAxisId="right" type="monotone" dataKey="incomeVisa" name="Visa" stroke="#1e3a8a" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                     <Line yAxisId="right" type="monotone" dataKey="incomeMC" name="Mastercard" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                   </ComposedChart>
@@ -594,12 +708,12 @@ const Dashboard = () => {
             </div>
 
             {/* KANAN BAWAH: INTERCHANGE COST (5 LINE) */}
-            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
+            <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[280px]">
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-2 gap-3">
-                <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg">Interchange Cost</h3>
+                <h3 className="font-bold text-[#0f172a] tracking-tight text-[18px] sm:text-[20px]">Interchange Cost</h3>
                 <div className="relative flex-1 xl:flex-none w-full xl:w-auto z-10">
                   <select 
-                    className="pl-3 pr-7 py-1.5 w-full bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors"
+                    className="pl-3 pr-7 py-1.5 w-full bg-white border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-700 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
                     value={costChartFilters.issuing} 
                     onChange={(e) => setCostChartFilters({...costChartFilters, issuing: e.target.value})}
                   >
@@ -612,16 +726,16 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="flex-1 w-full sm:ml-0 overflow-hidden">
+              <div className="flex-1 w-full sm:ml-0 overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={dashboardData.costChartData} margin={{top: 0, bottom: 0, right: 5, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={40} />
-                    <Tooltip contentStyle={customTooltipStyle} />
-                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    {/* 5 Lines untuk Cost (Dot dihilangkan, warna dibedakan agar mudah dibaca) */}
+                    <Tooltip content={<CustomInterchangeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                    <Legend verticalAlign="top" wrapperStyle={{ fontSize: '12px', paddingBottom: '15px' }} />
+                    
                     <Line yAxisId="right" type="monotone" dataKey="costVisa" name="Visa" stroke="#1e3a8a" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                     <Line yAxisId="right" type="monotone" dataKey="costMC" name="Mastercard" stroke="#f59e0b" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
                     <Line yAxisId="right" type="monotone" dataKey="costJCB" name="JCB" stroke="#10b981" strokeWidth={2.5} dot={false} activeDot={{r: 4}} />
@@ -634,7 +748,7 @@ const Dashboard = () => {
             
             {/* CHART 2: COST TRANSACTION */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
-              <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4">Cost Transaction</h3>
+              <h3 className="font-bold text-[#0f172a] tracking-tight text-base sm:text-lg mb-4">Cost Transaction</h3>
               <div className="flex-1 w-full sm:ml-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={dashboardData.defaultChartData} margin={{top: 10, bottom: 0, right: 10}}>
@@ -652,7 +766,7 @@ const Dashboard = () => {
 
             {/* CHART 3: COST BY GROUP */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] sm:h-[400px]">
-              <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4 flex items-center gap-1.5">
+              <h3 className="font-bold text-[#0f172a] tracking-tight text-base sm:text-lg mb-4 flex items-center gap-1.5">
                 Cost by Group <span className="text-[13px] text-slate-400 font-medium">(Rp B)</span>
               </h3>
               <div className="flex-1 w-full overflow-hidden">
@@ -673,7 +787,7 @@ const Dashboard = () => {
 
             {/* CHART 4: COST BY PRINCIPAL */}
             <div className="col-span-12 lg:col-span-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[350px]">
-              <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-4 text-center sm:text-left">Cost by Principal</h3>
+              <h3 className="font-bold text-[#0f172a] tracking-tight text-base sm:text-lg mb-4 text-center sm:text-left">Cost by Principal</h3>
               <div className="flex-1 flex flex-col xl:flex-row items-center justify-center gap-4">
                 <div className="w-full xl:w-[50%] h-[180px] xl:h-full max-w-[200px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -704,7 +818,7 @@ const Dashboard = () => {
 
             {/* REKONSILIASI STATUS */}
             <div className="col-span-12 lg:col-span-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-auto min-h-[350px]">
-              <h3 className="font-bold text-slate-800 tracking-tight text-base sm:text-lg mb-6 text-center sm:text-left">Rekonsiliasi Status</h3>
+              <h3 className="font-bold text-[#0f172a] tracking-tight text-base sm:text-lg mb-6 text-center sm:text-left">Rekonsiliasi Status</h3>
               <div className="flex flex-col gap-4 flex-1 justify-center">
                 {dashboardData.statusStats.map((stat, idx) => (
                   <div key={idx} onClick={() => openRekonDetail(stat.label)} className="flex items-center justify-between group cursor-pointer hover:bg-slate-50 p-2.5 -mx-2.5 rounded-xl transition-colors">

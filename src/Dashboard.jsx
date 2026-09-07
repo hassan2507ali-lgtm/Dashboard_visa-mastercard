@@ -84,7 +84,7 @@ const Dashboard = () => {
   // ==========================================
   // 2. STATE MANAGEMENT 
   // ==========================================
-  const [filters, setFilters] = useState({ periode: 'Agustus 2026', principal: 'All', group: 'All' });
+  const [filters, setFilters] = useState({ periode: 'All', principal: 'All', group: 'All' });
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
 
   const [salesChartFilters, setSalesChartFilters] = useState({ issuing: 'All' });
@@ -478,31 +478,10 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* HEADER & FILTER SEPERTI DI GAMBAR */}
-          <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 w-full gap-4">
-            <div className="flex flex-wrap items-end gap-3 w-full lg:w-auto" onClick={(e) => e.stopPropagation()}>
+          {/* HEADER & FILTER ATAS (HANYA PRINCIPAL) */}
+          <header className="flex justify-end mb-8 w-full">
+            <div className="flex flex-wrap items-end justify-end gap-4 w-full" onClick={(e) => e.stopPropagation()}>
               
-              {/* FILTER PERIODE */}
-              <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
-                <div className="relative">
-                  <select 
-                    className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
-                    value={filters.periode} 
-                    onChange={(e) => setFilters({...filters, periode: e.target.value})}
-                  >
-                    <option value="All">All Periode</option>
-                    <option value="Agustus 2026">Agustus 2026</option>
-                    <option value="Juli 2026">Juli 2026</option>
-                    <option value="Juni 2026">Juni 2026</option>
-                    <option value="Mei 2026">Mei 2026</option>
-                    <option value="April 2026">April 2026</option>
-                  </select>
-                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* FILTER PRINCIPAL */}
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Principal</label>
                 <div className="relative">
@@ -524,39 +503,13 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* FILTER BUSINESS GROUP */}
-              <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Business Group</label>
-                <div className="relative">
-                  <select 
-                    className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
-                    value={filters.group} 
-                    onChange={(e) => setFilters({...filters, group: e.target.value})}
-                  >
-                    <option value="All">All Groups</option>
-                    <option value="Acquiring">Acquiring</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Debit Card">Debit Card</option>
-                  </select>
-                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* TOMBOL APPLY */}
               <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">
                 Apply
               </button>
 
-              {/* TOMBOL RESET (HANYA TEKS DI KANAN APPLY) */}
               <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">
                 Reset
               </button>
-
-            </div>
-
-            {/* TEKS INFORMASI DATA (DI KANAN) */}
-            <div className="text-[11px] font-medium text-slate-500 whitespace-nowrap lg:pb-2">
-              Data per 31 Agu 2026 • Pembanding: Jul 2026
             </div>
           </header>
 
@@ -671,6 +624,88 @@ const Dashboard = () => {
               </div>
             </div>
             
+            {/* FULL FILTER ROW SEPERTI DI GAMBAR (DI ATAS INCOME & COST) */}
+            <div className="col-span-12 flex flex-col xl:flex-row justify-between items-start xl:items-end w-full gap-4 mt-2 mb-[-10px]">
+              <div className="flex flex-wrap items-end gap-3 w-full xl:w-auto" onClick={(e) => e.stopPropagation()}>
+                
+                {/* Periode */}
+                <div className="flex flex-col w-full sm:w-auto">
+                  <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                      value={filters.periode} 
+                      onChange={(e) => setFilters({...filters, periode: e.target.value})}
+                    >
+                      <option value="All">All Periode</option>
+                      <option value="Agustus 2026">Agustus 2026</option>
+                      <option value="Juli 2026">Juli 2026</option>
+                      <option value="Juni 2026">Juni 2026</option>
+                      <option value="Mei 2026">Mei 2026</option>
+                      <option value="April 2026">April 2026</option>
+                    </select>
+                    <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Principal */}
+                <div className="flex flex-col w-full sm:w-auto">
+                  <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Principal</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                      value={filters.principal} 
+                      onChange={(e) => setFilters({...filters, principal: e.target.value})}
+                    >
+                      <option value="All">All Principals</option>
+                      <option value="Visa">Visa</option>
+                      <option value="Mastercard">Mastercard</option>
+                      <option value="JCB">JCB</option>
+                      <option value="QR Rintis">QR Rintis</option>
+                      <option value="NPG Jalin">NPG Jalin</option>
+                      <option value="NPG Artajasa">NPG Artajasa</option>
+                      <option value="NPG Rintis">NPG Rintis</option>
+                    </select>
+                    <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Business Group */}
+                <div className="flex flex-col w-full sm:w-auto">
+                  <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Business Group</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm"
+                      value={filters.group} 
+                      onChange={(e) => setFilters({...filters, group: e.target.value})}
+                    >
+                      <option value="All">All Groups</option>
+                      <option value="Acquiring">Acquiring</option>
+                      <option value="Credit Card">Credit Card</option>
+                      <option value="Debit Card">Debit Card</option>
+                    </select>
+                    <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Apply Button */}
+                <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">
+                  Apply
+                </button>
+
+                {/* Reset Button (Hanya Teks) */}
+                <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">
+                  Reset
+                </button>
+
+              </div>
+
+              {/* Teks Informasi Data */}
+              <div className="text-[11px] font-medium text-slate-500 whitespace-nowrap xl:pb-2">
+                Data per 31 Agu 2026 • Pembanding: Jul 2026
+              </div>
+            </div>
+
             {/* KANAN ATAS: INTERCHANGE INCOME (2 LINE: VISA & MC) */}
             <div className="col-span-12 lg:col-span-6 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[280px]">
               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-2 gap-3">

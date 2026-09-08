@@ -53,7 +53,6 @@ const customLabelsPlugin = {
 
     data.datasets.forEach((dataset, i) => {
       const meta = chart.getDatasetMeta(i);
-      // HANYA RENDER ANGKA UNTUK GRAFIK GARIS (LINE), BAR CHART DIABAIKAN
       if (!meta || meta.hidden || dataset.type !== 'line') return; 
       
       meta.data.forEach((element, index) => {
@@ -61,11 +60,10 @@ const customLabelsPlugin = {
         if (dataValue === undefined || dataValue === null || !element) return; 
         
         const x = element.x;
-        // Tambahkan simbol persen (%) di teksnya
         const displayValue = Math.abs(dataValue).toFixed(0) + '%';
         
-        ctx.fillStyle = '#3b82f6'; // Warna biru untuk teks line
-        const y = element.y - 12; // Posisi melayang sedikit di atas garis
+        ctx.fillStyle = '#3b82f6'; 
+        const y = element.y - 12; 
 
         if(x !== undefined && y !== undefined) ctx.fillText(displayValue, x, y);
       });
@@ -142,7 +140,6 @@ const Dashboard = () => {
     groupStats: [],
   });
 
-  // LOGIKA TEKS DINAMIS UNTUK HEADER DAN VS BULAN
   const periodTexts = {
     'All': { header: '31 Agu 2026', vs: 'Jul 2026' },
     'Agustus 2026': { header: '31 Agu 2026', vs: 'Jul 2026' },
@@ -228,8 +225,12 @@ const Dashboard = () => {
         chartMap[groupKey].count += 1;
         
         const pCost = item.principalCost;
-        const monthWave = Math.sin(d.getMonth() * Math.PI / 1.2); 
-        const profitRatio = monthWave * 0.8 + 1.1; 
+        
+        // Logika dinamis: Gunakan data bulanan jika All Period, gunakan data harian jika filter bulan tertentu.
+        // Tujuannya agar chart harian tetap memiliki gelombang naik/turun yang jelas layaknya Gambar 1.
+        const timeVal = isAllPeriod ? d.getMonth() : d.getDate();
+        const wave = Math.sin(timeVal * Math.PI / 1.5); 
+        const profitRatio = wave * 0.6 + 1.0 + (Math.random() * 0.4 - 0.2); 
 
         const revenue = pCost * profitRatio;
         
@@ -294,7 +295,7 @@ const Dashboard = () => {
           <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
           <div className="flex flex-col gap-1.5">
             {payload?.map((entry, index) => {
-              const displayValue = entry.name === 'Cost To Volume' 
+              const displayValue = entry.name === '%Cost To Volume' 
                 ? Number(entry.value || 0).toFixed(4)
                 : Math.abs(entry.value || 0).toFixed(2);
               return (
@@ -320,7 +321,7 @@ const Dashboard = () => {
     datasets: [
       {
         type: 'line',
-        label: 'Percentage Margin to Volume', 
+        label: '%Margin to Volume', 
         data: dataArray.map(d => d.plLine),
         borderColor: '#3b82f6', 
         borderWidth: 2.5, 
@@ -585,7 +586,7 @@ const Dashboard = () => {
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="%Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -607,7 +608,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="%Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -629,7 +630,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="%Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -643,7 +644,7 @@ const Dashboard = () => {
                                   dashboardData.acquiringChartData;
 
               return (
-                <div key={index} className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] relative group overflow-visible">
+                <div key={index} className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] relative">
                   
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L {group}</h3>

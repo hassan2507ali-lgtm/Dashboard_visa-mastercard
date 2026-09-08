@@ -283,7 +283,7 @@ const Dashboard = () => {
           <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
           <div className="flex flex-col gap-1.5">
             {payload?.map((entry, index) => {
-              const displayValue = entry.name === 'Cost To Volume' 
+              const displayValue = entry.name === '% Cost To Volume' 
                 ? Number(entry.value || 0).toFixed(4)
                 : Math.abs(entry.value || 0).toFixed(2);
               return (
@@ -309,7 +309,7 @@ const Dashboard = () => {
     datasets: [
       {
         type: 'line',
-        label: 'Percentage Margin to Volume', 
+        label: '%', 
         data: dataArray.map(d => d.plLine),
         borderColor: '#3b82f6', 
         borderWidth: 2.5, 
@@ -514,7 +514,7 @@ const Dashboard = () => {
                 { label: 'Acquiring', ...getDynamicStats('Acquiring') }
               ];
 
-              const isReverseTrend = card.label === 'Cost' || card.label === 'Cost To Volume';
+              const isReverseTrend = card.label === 'Cost' || card.label === '% Cost To Volume';
               const colorUp = isReverseTrend ? 'text-rose-500' : 'text-emerald-500';
               const colorDown = isReverseTrend ? 'text-emerald-500' : 'text-rose-500';
 
@@ -574,7 +574,7 @@ const Dashboard = () => {
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -596,7 +596,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -618,7 +618,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

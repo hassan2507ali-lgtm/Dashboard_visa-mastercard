@@ -309,7 +309,7 @@ const Dashboard = () => {
     datasets: [
       {
         type: 'line',
-        label: '%', 
+        label: '%Margin to Volume', 
         data: dataArray.map(d => d.plLine),
         borderColor: '#3b82f6', 
         borderWidth: 2.5, 

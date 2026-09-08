@@ -9,7 +9,7 @@ import {
 
 // RECHARTS UNTUK GRAFIK COMBO STANDARD
 import { 
-  ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
+  ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, Legend as RechartsLegend, ResponsiveContainer 
 } from 'recharts';
 
@@ -21,6 +21,8 @@ import {
   BarElement,
   LineElement,
   PointElement,
+  LineController,
+  BarController,
   Title,
   Tooltip as ChartJsTooltip,
   Legend as ChartJsLegend,
@@ -28,14 +30,17 @@ import {
 import { Chart as ChartJsComponent } from 'react-chartjs-2';
 
 // REGISTER CHART.JS COMPONENTS
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, ChartJsTooltip, ChartJsLegend);
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement, 
+  LineController, BarController, Title, ChartJsTooltip, ChartJsLegend
+);
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
 import LogoDanantara from './mandiri.png';
 
 // ==========================================
-// CUSTOM PLUGIN CHART.JS UNTUK TEKS ANGKA DI BAR P/L
+// CUSTOM PLUGIN CHART.JS: TEKS ANGKA HANYA UNTUK LINE
 // ==========================================
 const customLabelsPlugin = {
   id: 'customLabels',
@@ -43,22 +48,27 @@ const customLabelsPlugin = {
     const { ctx, data } = chart;
     ctx.save();
     ctx.font = 'bold 10px Arial';
-    ctx.fillStyle = '#334155';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     data.datasets.forEach((dataset, i) => {
       const meta = chart.getDatasetMeta(i);
-      if (meta.hidden || dataset.type !== 'bar') return; 
-      meta.data.forEach((bar, index) => {
+      // HANYA RENDER ANGKA UNTUK GRAFIK GARIS (LINE), BAR CHART DIABAIKAN
+      if (!meta || meta.hidden || dataset.type !== 'line') return; 
+      
+      meta.data.forEach((element, index) => {
         const dataValue = dataset.data[index];
-        if (!dataValue || dataValue === 0) return;
+        // Hapus filter dataValue === 0 agar tulisan 0% tetap muncul saat Loss
+        if (dataValue === undefined || dataValue === null || !element) return; 
         
-        const x = bar.x;
-        const displayValue = Math.abs(dataValue).toFixed(0);
-        let y = dataset.label === 'Profit' ? bar.y - 12 : bar.y + 12;
+        const x = element.x;
+        // Tambahkan simbol persen (%) di teksnya (termasuk 0%)
+        const displayValue = Math.abs(dataValue).toFixed(0) + '%';
+        
+        ctx.fillStyle = '#3b82f6'; // Warna biru untuk teks line
+        const y = element.y - 12; // Posisi melayang sedikit di atas garis
 
-        ctx.fillText(displayValue, x, y);
+        if(x !== undefined && y !== undefined) ctx.fillText(displayValue, x, y);
       });
     });
     ctx.restore();
@@ -88,11 +98,12 @@ const generateDummyData = () => {
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-      const baseCost = (Math.random() * 2 + 1) * wave; 
+      const baseCost = (Math.random() * 3 + 2) * wave; 
       const principalCost = Number(baseCost.toFixed(3));
+      const salesVolume = Number((principalCost * (Math.random() * 1.2 + 1.2)).toFixed(0));
       
-      const salesVolume = Number((principalCost * (Math.random() * 1.5 + 1.5)).toFixed(0));
-      const costRate = Number((Math.random() * 0.015 + 0.035).toFixed(3));
+      const costRateBase = 0.038 + (wave - 1.2) * 0.005;
+      const costRate = Number((costRateBase + (Math.random() * 0.002 - 0.001)).toFixed(4));
 
       data.push({
         id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
@@ -101,7 +112,7 @@ const generateDummyData = () => {
         group: groupName, 
         salesVolume: salesVolume, 
         principalCost: principalCost, 
-        costRate: costRate,
+        costRate: Math.max(costRate, 0.01), 
       });
       i++;
     }
@@ -205,8 +216,9 @@ const Dashboard = () => {
         chartMap[groupKey].count += 1;
         
         const pCost = item.principalCost;
-        const monthWave = Math.sin(d.getMonth() * Math.PI / 1.5); 
-        const profitRatio = monthWave * 0.6 + 1.1; 
+        const monthWave = Math.sin(d.getMonth() * Math.PI / 1.2); 
+        const profitRatio = monthWave * 0.8 + 1.1; 
+
         const revenue = pCost * profitRatio;
         
         chartMap[groupKey].principalCost += pCost;
@@ -215,27 +227,27 @@ const Dashboard = () => {
 
       const rawChartData = Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(data => {
         const netPL = data.totalRevenue - data.principalCost;
-        const plProfit = netPL >= 0 ? netPL : 0;
-        const plLoss = netPL < 0 ? netPL : 0; 
+        const marginPct = data.salesVolume ? (netPL / data.salesVolume) * 100 : 0;
+        
+        const plProfit = marginPct >= 0 ? marginPct : 0;
+        const plLoss = marginPct < 0 ? marginPct : 0; 
         
         return {
           name: data.label,
           salesVolume: Number(data.salesVolume.toFixed(0)),
           principalCost: Number(data.principalCost.toFixed(2)),
-          costToVolume: Number((data.totalRate / data.count).toFixed(3)), 
-          plProfit: Number(plProfit.toFixed(2)),
-          plLoss: Number(plLoss.toFixed(2)), 
+          costToVolume: Number((data.totalRate / data.count).toFixed(4)), 
+          plProfit: Number(plProfit.toFixed(1)),
+          plLoss: Number(plLoss.toFixed(1)), 
         };
       });
 
-      // Kalkulasi Gap untuk Line Chart agar melayang di atas bar
       const maxProfit = Math.max(...rawChartData.map(d => d.plProfit));
       const lineGap = maxProfit * 0.15 || 5;
 
       return rawChartData.map(d => ({
         ...d,
-        // Jika Profit -> Line di atas bar + gap. Jika Loss -> Line di atas angka 0 + gap kecil.
-        plLine: d.plProfit > 0 ? Number((d.plProfit + lineGap).toFixed(2)) : Number((lineGap * 0.5).toFixed(2))
+        plLine: d.plProfit > 0 ? Number((d.plProfit + lineGap).toFixed(1)) : 0
       }));
     };
 
@@ -261,6 +273,7 @@ const Dashboard = () => {
     setAppliedFilters({ periode: 'All', principal: 'All' });
   };
   const handleLogout = () => alert("Logout berhasil!");
+  const handleViewDetail = () => navigate('/detail-cost');
   
   // Tooltip Combo Chart (Recharts) dengan Background Transparan Putih
   const CustomTrendTooltip = ({ active, payload, label }) => {
@@ -269,9 +282,9 @@ const Dashboard = () => {
         <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-4 text-[13px] text-slate-700 min-w-[200px] z-50">
           <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
           <div className="flex flex-col gap-1.5">
-            {payload.map((entry, index) => {
+            {payload?.map((entry, index) => {
               const displayValue = entry.name === 'Cost To Volume' 
-                ? Number(entry.value || 0).toFixed(3)
+                ? Number(entry.value || 0).toFixed(4)
                 : Math.abs(entry.value || 0).toFixed(2);
               return (
                 <div key={index} className="flex justify-between items-center text-[12px]">
@@ -296,13 +309,14 @@ const Dashboard = () => {
     datasets: [
       {
         type: 'line',
-        label: 'Trend',
+        label: 'Percentage Margin to Volume', 
         data: dataArray.map(d => d.plLine),
         borderColor: '#3b82f6', 
-        borderWidth: 2,
+        borderWidth: 2.5, 
         pointRadius: 0, 
         pointHoverRadius: 0,
         fill: false,
+        pointStyle: 'line', 
       },
       {
         type: 'bar',
@@ -311,7 +325,8 @@ const Dashboard = () => {
         backgroundColor: '#22c55e', 
         borderColor: '#71717a',
         borderWidth: 1,
-        borderRadius: { topLeft: 4, topRight: 4 }, // Rounded sedikit di atas
+        borderRadius: { topLeft: 4, topRight: 4 }, 
+        pointStyle: 'rect', 
       },
       {
         type: 'bar',
@@ -320,7 +335,8 @@ const Dashboard = () => {
         backgroundColor: '#ef4444', 
         borderColor: '#71717a',
         borderWidth: 1,
-        borderRadius: { bottomLeft: 4, bottomRight: 4 }, // Rounded sedikit di bawah
+        borderRadius: { bottomLeft: 4, bottomRight: 4 }, 
+        pointStyle: 'rect', 
       }
     ]
   });
@@ -333,15 +349,23 @@ const Dashboard = () => {
       x: { stacked: true, grid: { display: false, drawBorder: false }, ticks: { font: { size: 10 }, color: '#64748b' } },
       y: {
         stacked: true,
-        grace: '20%', // Menambah ruang atas bawah agar bar tidak boncel/pendek
+        grace: '10%', 
         grid: { color: (c) => c.tick.value === 0 ? '#000000' : 'transparent', lineWidth: (c) => c.tick.value === 0 ? 1.5 : 0, drawBorder: false },
         ticks: { display: false } 
       }
     },
     plugins: {
-      legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 }, filter: (legendItem) => legendItem.text !== 'Trend' } },
+      legend: { 
+        display: true, 
+        position: 'top', 
+        labels: { 
+          usePointStyle: true, 
+          boxWidth: 16, 
+          font: { size: 11 } 
+        } 
+      },
       tooltip: {
-        backgroundColor: 'rgba(255, 255, 255, 0.95)', // Putih transparan
+        backgroundColor: 'rgba(255, 255, 255, 0.95)', 
         titleColor: '#0f172a',
         bodyColor: '#334155',
         borderColor: '#e2e8f0',
@@ -351,10 +375,19 @@ const Dashboard = () => {
         usePointStyle: true,
         callbacks: {
           label: (context) => {
-            if (context.dataset.type === 'line') return null; 
             let label = context.dataset.label || '';
             if (label) label += ': ';
-            if (context.parsed.y !== null) label += Math.abs(context.parsed.y).toFixed(2);
+            
+            // JIKA LINE CHART (Percentage Margin), ambil nilai aslinya untuk tooltip agar terlihat saat loss
+            if (context.dataset.type === 'line') {
+              const profitVal = context.chart.data.datasets[1].data[context.dataIndex] || 0;
+              const lossVal = context.chart.data.datasets[2].data[context.dataIndex] || 0;
+              const actualMargin = profitVal > 0 ? profitVal : lossVal; // Menangkap persentase asli (bisa minus)
+              label += actualMargin.toFixed(1) + '%';
+            } else {
+              // Untuk bar Profit & Loss
+              if (context.parsed.y !== null) label += Math.abs(context.parsed.y).toFixed(1) + '%';
+            }
             return label;
           },
           labelColor: (context) => {
@@ -419,7 +452,7 @@ const Dashboard = () => {
           {/* FILTER UTAMA (KIRI TEKS, KANAN FILTER) */}
           <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6">
             <div className="text-[13px] font-bold text-slate-500 whitespace-nowrap order-2 xl:order-1 flex items-center gap-2">
-              <CalendarIcon size={16} className="text-blue-600" /> Data per 31 Agu 2026 
+              <CalendarIcon size={16} className="text-blue-600" /> Data per 31 Agu 2026 • Pembanding: Jul 2026
             </div>
 
             <div className="flex flex-wrap items-end justify-end gap-3 w-full xl:w-auto order-1 xl:order-2" onClick={(e) => e.stopPropagation()}>
@@ -463,7 +496,7 @@ const Dashboard = () => {
                 const baseVal = groupData ? groupData.totalSort : 0;
                 if (baseVal === 0) return { amount: '0', pct: '0%', isUp: true };
                 let amountStr = '';
-                if (card.label === 'Sales Volume') amountStr = ((baseVal % 8000) / 400 + 1.2).toFixed(2) + ' T';
+                if (card.label === 'Sales Volume') amountStr = ((baseVal % 5000) / 800 + 2.5).toFixed(2) + ' T';
                 else if (card.label === 'Cost') amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
                 else if (card.label === 'Cost To Volume') amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
                 else if (card.label === 'Income') amountStr = ((baseVal % 2500) / 400 + 0.8).toFixed(2) + ' B';
@@ -481,7 +514,6 @@ const Dashboard = () => {
                 { label: 'Acquiring', ...getDynamicStats('Acquiring') }
               ];
 
-              // LOGIKA REVERSE TREND KHUSUS COST & COST TO VOLUME
               const isReverseTrend = card.label === 'Cost' || card.label === 'Cost To Volume';
               const colorUp = isReverseTrend ? 'text-rose-500' : 'text-emerald-500';
               const colorDown = isReverseTrend ? 'text-emerald-500' : 'text-rose-500';
@@ -513,7 +545,6 @@ const Dashboard = () => {
                       </div>
                     ))}
                   </div>
-                  {/* TEKS VS JUL 2026 DI BAWAH 1 KALI SAJA */}
                   <div className="text-center mt-3 pt-2 border-t border-slate-50 border-dashed">
                     <span className="text-[10px] font-medium text-slate-400">vs Jul 2026</span>
                   </div>
@@ -526,31 +557,23 @@ const Dashboard = () => {
           <div className="grid grid-cols-12 gap-5 pb-10">
 
             {/* --- BARISAN 1: 3 COMBO GRIDS (CREDIT, DEBIT, ACQUIRING) --- */}
-            {/* Note: 2 Bar per bulan (Sales Volume & Cost) merapat. Line chart (Cost To Volume) melayang bebas di atas agar tidak nabrak */}
             <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">Credit</h3>
               </div>
               <div className="flex-1 w-full overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  {/* barGap=0 agar kedua bar per bulan saling menempel (mepet) */}
                   <ComposedChart data={dashboardData.creditChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
-                    
-                    {/* YAxis (Kiri) Ditingkatkan domainnya x 2.2 agar Bar menjadi pendek (berada di bawah) */}
-                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    
-                    {/* YAxis (Kanan) Diset agak tinggi agar Line Chart selalu melayang di paruh atas dan tidak nabrak */}
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
-                    
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil((dataMax || 1) * 1.8)]} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => ((dataMax || 1) * 1.1)]} />
                     <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     
-                    {/* Line Chart murni tanpa node/titik */}
                     <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -566,8 +589,8 @@ const Dashboard = () => {
                   <ComposedChart data={dashboardData.debitChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
-                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil((dataMax || 1) * 1.8)]} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => ((dataMax || 1) * 1.1)]} />
                     <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
@@ -588,8 +611,8 @@ const Dashboard = () => {
                   <ComposedChart data={dashboardData.acquiringChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
-                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil((dataMax || 1) * 1.8)]} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => ((dataMax || 1) * 1.1)]} />
                     <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
@@ -601,8 +624,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* --- BARISAN 2: 3 GRID P/L MENGGUNAKAN CHART.JS (DIVERGING BAR + LINE) --- */}
-            {/* Note: 1 Bulan 1 Bar (Mutlak Profit ATAU Loss). Line menunjuk 0 jika Loss dan memiliki GAP dari atas bar Hijau. */}
+            {/* --- BARISAN 2: 3 GRID P/L --- */}
             {['Credit', 'Debit', 'Acquiring'].map((group, index) => {
               
               const currentData = group === 'Credit' ? dashboardData.creditChartData : 
@@ -610,10 +632,12 @@ const Dashboard = () => {
                                   dashboardData.acquiringChartData;
 
               return (
-                <div key={index} className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] relative">
+                <div key={index} className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] relative group overflow-visible">
+                  
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L {group}</h3>
                   </div>
+
                   <div className="flex-1 w-full overflow-hidden mt-2 relative">
                     <ChartJsComponent 
                       type='bar'

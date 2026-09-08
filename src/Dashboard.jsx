@@ -4,47 +4,80 @@ import {
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
   BarChart2, Clock, CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
-  Info,
   CardSim
 } from 'lucide-react';
 
-// RECHARTS UNTUK GRAFIK STANDARD
+// RECHARTS UNTUK GRAFIK COMBO STANDARD
 import { 
   ComposedChart, LineChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip as RechartsTooltip, Legend as RechartsLegend, ResponsiveContainer, 
-  PieChart, Pie, Cell, BarChart 
+  Tooltip as RechartsTooltip, Legend as RechartsLegend, ResponsiveContainer 
 } from 'recharts';
 
-// CHART.JS UNTUK DIVERGING BAR CHART (P/L)
+// CHART.JS UNTUK GRAFIK P/L DIVERGING BAR + LINE
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  LineElement,
+  PointElement,
   Title,
   Tooltip as ChartJsTooltip,
   Legend as ChartJsLegend,
 } from 'chart.js';
-import { Bar as ChartJsBar } from 'react-chartjs-2';
+import { Chart as ChartJsComponent } from 'react-chartjs-2';
 
 // REGISTER CHART.JS COMPONENTS
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, ChartJsTooltip, ChartJsLegend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, ChartJsTooltip, ChartJsLegend);
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
 import LogoDanantara from './mandiri.png';
 
 // ==========================================
-// 1. GENERATE DUMMY DATABASE MASIF DENGAN LOGIKA REALISTIS
+// CUSTOM PLUGIN CHART.JS UNTUK TEKS ANGKA DI BAR P/L
+// ==========================================
+const customLabelsPlugin = {
+  id: 'customLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx, data } = chart;
+    ctx.save();
+    ctx.font = 'bold 10px Arial';
+    ctx.fillStyle = '#334155';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    data.datasets.forEach((dataset, i) => {
+      const meta = chart.getDatasetMeta(i);
+      if (meta.hidden || dataset.type !== 'bar') return; 
+      meta.data.forEach((bar, index) => {
+        const dataValue = dataset.data[index];
+        if (!dataValue || dataValue === 0) return;
+        
+        const x = bar.x;
+        const displayValue = Math.abs(dataValue).toFixed(0);
+        let y = dataset.label === 'Profit' ? bar.y - 12 : bar.y + 12;
+
+        ctx.fillText(displayValue, x, y);
+      });
+    });
+    ctx.restore();
+  }
+};
+
+// ==========================================
+// 1. GENERATE DUMMY DATABASE MASIF
 // ==========================================
 const generateDummyData = () => {
   const data = [];
-  let currentDate = new Date(2024, 0, 1);
+  let currentDate = new Date(2026, 0, 1);
   const endDate = new Date(2026, 11, 31);
   
   let i = 0;
   while (currentDate <= endDate) {
-    const numTrx = Math.floor(Math.random() * 20) + 1; 
+    const numTrx = Math.floor(Math.random() * 10) + 8; 
+    const monthIndex = currentDate.getMonth();
+    const wave = Math.sin(monthIndex * 0.8) * 0.4 + 1.2; 
 
     for(let j=0; j < numTrx; j++) {
       const typeRand = Math.random();
@@ -52,40 +85,23 @@ const generateDummyData = () => {
       
       const groupRand = Math.random();
       let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
-      
-      let subGroup = null;
-      if (groupName === 'Acquiring') {
-        subGroup = Math.random() > 0.4 ? 'Interchange' : 'Service';
-      }
-
-      const statusRand = Math.random();
-      let status = '';
-      if (statusRand > 0.55) status = 'Done Rekon (No Deviasi)';
-      else if (statusRand > 0.35) status = 'Done Rekon (Deviasi)';
-      else if (statusRand > 0.20) status = 'Belum Rekon';
-      else if (statusRand > 0.10) status = 'Fixed Rate';
-      else status = 'New Billing';
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-      const baseCost = Math.random() * 5 + 0.5; 
-      const spikeMultiplier = Math.random() > 0.85 ? 3 : 1; 
-      const principalCost = Number((baseCost * spikeMultiplier).toFixed(3));
+      const baseCost = (Math.random() * 2 + 1) * wave; 
+      const principalCost = Number(baseCost.toFixed(3));
       
-      const salesVolume = Number((principalCost * (Math.random() * 10 + 5)).toFixed(0));
-      const costRate = Number((Math.random() * 0.01 + 0.035).toFixed(3));
+      const salesVolume = Number((principalCost * (Math.random() * 1.5 + 1.5)).toFixed(0));
+      const costRate = Number((Math.random() * 0.015 + 0.035).toFixed(3));
 
       data.push({
         id: `TRX-${currentDate.getFullYear()}${String(currentDate.getMonth()+1).padStart(2,'0')}-${1000 + i}`,
         date: dateString, 
         principal: type, 
         group: groupName, 
-        subGroup: subGroup, 
-        status: status,
         salesVolume: salesVolume, 
         principalCost: principalCost, 
         costRate: costRate,
-        merchant: `Merchant ${String.fromCharCode(65 + (i % 5))}`,
       });
       i++;
     }
@@ -96,101 +112,6 @@ const generateDummyData = () => {
 
 const DUMMY_DB = generateDummyData();
 
-// ==========================================
-// CUSTOM TOOLTIP CHART.JS UNTUK P/L
-// Membuat popup Chart.js persis seperti Recharts
-// ==========================================
-const getOrCreateTooltip = (chart) => {
-  let tooltipEl = chart.canvas.parentNode.querySelector('div.chartjs-tooltip');
-
-  if (!tooltipEl) {
-    tooltipEl = document.createElement('div');
-    tooltipEl.classList.add('chartjs-tooltip');
-    tooltipEl.style.background = 'white';
-    tooltipEl.style.borderRadius = '12px';
-    tooltipEl.style.boxShadow = '0 10px 40px -10px rgba(0,0,0,0.15)';
-    tooltipEl.style.border = '1px solid #e2e8f0';
-    tooltipEl.style.opacity = 1;
-    tooltipEl.style.pointerEvents = 'none';
-    tooltipEl.style.position = 'absolute';
-    tooltipEl.style.transform = 'translate(-50%, -100%)'; 
-    tooltipEl.style.transition = 'all .1s ease';
-    tooltipEl.style.minWidth = '200px';
-    tooltipEl.style.zIndex = '50';
-    tooltipEl.style.padding = '16px';
-    
-    const table = document.createElement('table');
-    table.style.margin = '0px';
-    table.style.width = '100%';
-    table.style.borderCollapse = 'collapse';
-
-    tooltipEl.appendChild(table);
-    chart.canvas.parentNode.appendChild(tooltipEl);
-  }
-  return tooltipEl;
-};
-
-const externalTooltipHandler = (context) => {
-  const {chart, tooltip} = context;
-  const tooltipEl = getOrCreateTooltip(chart);
-
-  if (tooltip.opacity === 0) {
-    tooltipEl.style.opacity = 0;
-    return;
-  }
-
-  if (tooltip.body) {
-    const titleLines = tooltip.title || [];
-    const bodyLines = tooltip.body.map(b => b.lines);
-
-    let innerHtml = '<thead>';
-    titleLines.forEach(title => {
-      innerHtml += `<tr><th style="text-align:left; font-weight:bold; color:#1e293b; padding-bottom:8px; border-bottom:1px solid #f1f5f9; font-size:14px;">${title}</th></tr>`;
-    });
-    innerHtml += '</thead><tbody>';
-
-    let baseVal = 0;
-    bodyLines.forEach((body, i) => {
-      const colors = tooltip.labelColors[i];
-      const parts = body[0].split(':');
-      const name = parts[0].trim();
-      const valNum = parseFloat(parts[1].trim());
-      
-      baseVal += valNum;
-      const displayVal = Math.abs(valNum).toFixed(2); // Angka absolute agar loss tidak pakai tanda minus di tooltip
-      const colorSquare = `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${colors.backgroundColor}; margin-right:8px;"></span>`;
-
-      innerHtml += `<tr><td style="padding-top:8px; font-size:12px; color:#475569; display:flex; justify-content:space-between; align-items:center;">
-        <div style="display:flex; align-items:center;">${colorSquare} <span>${name}:</span></div>
-        <strong style="color:#1e293b; margin-left:16px;">${displayVal}</strong>
-      </td></tr>`;
-    });
-
-    const isUp = Math.round(baseVal) % 2 === 0;
-    const dynamicPct = (Math.abs(baseVal) % 2.5 + 0.1).toFixed(1);
-    const trendColor = isUp ? '#10b981' : '#ef4444';
-    const trendArrow = isUp ? '▲' : '▼';
-
-    innerHtml += `<tr><td style="padding-top:12px;">
-      <div style="background:#f8fafc; border-radius:8px; padding:6px; display:flex; justify-content:center; align-items:center; gap:6px;">
-        <span style="color:${trendColor}; font-size:12px; font-weight:bold;">${trendArrow} ${dynamicPct}%</span>
-        <span style="font-size:11px; font-weight:bold; color:#1e293b;">vs Jul 2026</span>
-      </div>
-    </td></tr>`;
-
-    innerHtml += '</tbody>';
-
-    const tableRoot = tooltipEl.querySelector('table');
-    tableRoot.innerHTML = innerHtml;
-  }
-
-  const {offsetLeft: positionX, offsetTop: positionY} = chart.canvas;
-  tooltipEl.style.opacity = 1;
-  tooltipEl.style.left = positionX + tooltip.caretX + 'px';
-  tooltipEl.style.top = positionY + tooltip.caretY - 10 + 'px';
-};
-
-
 const Dashboard = () => {
   const navigate = useNavigate();
 
@@ -200,9 +121,6 @@ const Dashboard = () => {
   const [filters, setFilters] = useState({ periode: 'All', principal: 'All' });
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalTitle, setModalTitle] = useState('');
-  const [modalData, setModalData] = useState([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -215,7 +133,7 @@ const Dashboard = () => {
   });
 
   // ==========================================
-  // 3. LOGIKA FILTERING & AGREGASI
+  // 3. LOGIKA FILTERING & AGREGASI (DINAMIS)
   // ==========================================
   useEffect(() => {
     const periodMap = {
@@ -223,9 +141,10 @@ const Dashboard = () => {
       'Mei 2026': '2026-05', 'April 2026': '2026-04', 'All': 'All'
     };
     const targetPeriod = periodMap[appliedFilters.periode];
+    const isAllPeriod = targetPeriod === 'All';
 
     const globalFilteredDB = DUMMY_DB.filter(item => {
-      const passPeriode = targetPeriod === 'All' || item.date.startsWith(targetPeriod);
+      const passPeriode = isAllPeriod || item.date.startsWith(targetPeriod);
       const passPrincipal = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
       return passPeriode && passPrincipal;
     });
@@ -239,23 +158,20 @@ const Dashboard = () => {
       return;
     }
 
-    let totalSales = 0, totalCost = 0, totalRate = 0;
-    let creditService = 0, debitService = 0, acqInterchange = 0, acqService = 0;
+    let totalSales = 0, totalCost = 0;
+    let creditService = 0, debitService = 0, acqService = 0;
 
     globalFilteredDB.forEach(item => {
-      totalSales += item.salesVolume; totalCost += item.principalCost; totalRate += item.costRate;
+      totalSales += item.salesVolume; 
+      totalCost += item.principalCost;
       
       if (item.group === 'Credit Card') creditService += item.principalCost; 
       else if (item.group === 'Debit Card') debitService += item.principalCost; 
-      else if (item.group === 'Acquiring') {
-        if (item.subGroup === 'Interchange') acqInterchange += item.principalCost;
-        else if (item.subGroup === 'Service') acqService += item.principalCost;
-      }
+      else if (item.group === 'Acquiring') acqService += item.principalCost;
     });
 
     const getChartData = (baseDB, filterGroup) => {
       const chartFilteredDB = baseDB.filter(item => {
-        if (filterGroup === 'All') return true;
         if (filterGroup === 'Acquiring') return item.group === 'Acquiring';
         if (filterGroup === 'Issuing Debit') return item.group === 'Debit Card';
         if (filterGroup === 'Issuing Credit') return item.group === 'Credit Card';
@@ -267,77 +183,96 @@ const Dashboard = () => {
 
       chartFilteredDB.forEach(item => {
         const d = new Date(item.date);
-        const groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; 
-        const displayLabel = `${monthsShort[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
+        let groupKey, displayLabel;
+
+        if (isAllPeriod) {
+          groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; 
+          displayLabel = `${monthsShort[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
+        } else {
+          groupKey = item.date;
+          displayLabel = `${d.getDate()} ${monthsShort[d.getMonth()]}`;
+        }
 
         if (!chartMap[groupKey]) {
           chartMap[groupKey] = { 
-            label: displayLabel, salesVolume: 0, principalCost: 0, count: 0, sortKey: groupKey,
-            totalIncome: 0, negativeCost: 0
+            label: displayLabel, sortKey: groupKey, count: 0, totalRate: 0,
+            salesVolume: 0, principalCost: 0, totalRevenue: 0
           };
         }
         
         chartMap[groupKey].salesVolume += item.salesVolume; 
+        chartMap[groupKey].totalRate += item.costRate; 
         chartMap[groupKey].count += 1;
-
+        
         const pCost = item.principalCost;
-        const isLoss = Math.random() > 0.65; 
-        const pInc = isLoss ? pCost * 0.7 : pCost * 1.5; 
+        const monthWave = Math.sin(d.getMonth() * Math.PI / 1.5); 
+        const profitRatio = monthWave * 0.6 + 1.1; 
+        const revenue = pCost * profitRatio;
         
         chartMap[groupKey].principalCost += pCost;
-        chartMap[groupKey].totalIncome += pInc;
-        chartMap[groupKey].negativeCost -= pCost; // Minus agar Bar merah mengarah ke bawah
+        chartMap[groupKey].totalRevenue += revenue; 
       });
 
-      return Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(data => ({
-        name: data.label,
-        salesVolume: Number(data.salesVolume.toFixed(0)),
-        principalCost: Number(data.principalCost.toFixed(2)),
-        totalIncome: Number(data.totalIncome.toFixed(2)),
-        negativeCost: Number(data.negativeCost.toFixed(2))
+      const rawChartData = Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).map(data => {
+        const netPL = data.totalRevenue - data.principalCost;
+        const plProfit = netPL >= 0 ? netPL : 0;
+        const plLoss = netPL < 0 ? netPL : 0; 
+        
+        return {
+          name: data.label,
+          salesVolume: Number(data.salesVolume.toFixed(0)),
+          principalCost: Number(data.principalCost.toFixed(2)),
+          costToVolume: Number((data.totalRate / data.count).toFixed(3)), 
+          plProfit: Number(plProfit.toFixed(2)),
+          plLoss: Number(plLoss.toFixed(2)), 
+        };
+      });
+
+      // Kalkulasi Gap untuk Line Chart agar melayang di atas bar
+      const maxProfit = Math.max(...rawChartData.map(d => d.plProfit));
+      const lineGap = maxProfit * 0.15 || 5;
+
+      return rawChartData.map(d => ({
+        ...d,
+        // Jika Profit -> Line di atas bar + gap. Jika Loss -> Line di atas angka 0 + gap kecil.
+        plLine: d.plProfit > 0 ? Number((d.plProfit + lineGap).toFixed(2)) : Number((lineGap * 0.5).toFixed(2))
       }));
     };
 
-    const avgRate = (totalRate / globalFilteredDB.length).toFixed(3);
-
     setDashboardData({
-      summary: { sales: totalSales.toFixed(0), cost: totalCost.toFixed(2), rate: avgRate },
+      summary: { sales: totalSales.toFixed(0), cost: totalCost.toFixed(2), rate: 0 },
       creditChartData: getChartData(globalFilteredDB, 'Issuing Credit'),
       debitChartData: getChartData(globalFilteredDB, 'Issuing Debit'),
       acquiringChartData: getChartData(globalFilteredDB, 'Acquiring'),
       groupStats: [
-        { name: 'Credit Card', interchange: 0, service: Number(creditService.toFixed(2)), totalSort: Number(creditService.toFixed(2)) }, 
-        { name: 'Debit Card', interchange: 0, service: Number(debitService.toFixed(2)), totalSort: Number(debitService.toFixed(2)) }, 
-        { name: 'Acquiring', interchange: Number(acqInterchange.toFixed(2)), service: Number(acqService.toFixed(2)), totalSort: Number((acqInterchange + acqService).toFixed(2)) }
-      ].sort((a,b) => b.totalSort - a.totalSort)
+        { name: 'Credit Card', totalSort: Number(creditService.toFixed(2)) }, 
+        { name: 'Debit Card', totalSort: Number(debitService.toFixed(2)) }, 
+        { name: 'Acquiring', totalSort: Number(acqService.toFixed(2)) }
+      ]
     });
   }, [appliedFilters]);
 
   // ==========================================
-  // 4. HANDLERS & CHART.JS CONFIG
+  // 4. HANDLERS & CONFIGURATIONS
   // ==========================================
   const handleApply = () => setAppliedFilters({ ...filters });
-
   const handleReset = () => {
     setFilters({ periode: 'All', principal: 'All' });
     setAppliedFilters({ periode: 'All', principal: 'All' });
   };
-
   const handleLogout = () => alert("Logout berhasil!");
-  const handleViewDetail = () => navigate('/detail-cost');
   
-  const CustomInterchangeTooltip = ({ active, payload, label }) => {
+  // Tooltip Combo Chart (Recharts) dengan Background Transparan Putih
+  const CustomTrendTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      const baseVal = payload[0].value || 0;
-      const isUp = Math.round(baseVal) % 2 === 0;
-      const dynamicPct = (Math.abs(baseVal) % 2.5 + 0.1).toFixed(1);
-
       return (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-4 text-[13px] text-slate-700 min-w-[200px] z-50">
+        <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] p-4 text-[13px] text-slate-700 min-w-[200px] z-50">
           <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
           <div className="flex flex-col gap-1.5">
             {payload.map((entry, index) => {
-              const displayValue = Math.abs(entry.value || 0).toFixed(2);
+              const displayValue = entry.name === 'Cost To Volume' 
+                ? Number(entry.value || 0).toFixed(3)
+                : Math.abs(entry.value || 0).toFixed(2);
               return (
                 <div key={index} className="flex justify-between items-center text-[12px]">
                   <div className="flex items-center gap-2">
@@ -349,73 +284,83 @@ const Dashboard = () => {
               );
             })}
           </div>
-          <div className="mt-3 pt-3 border-t border-slate-100 flex justify-center items-center gap-1.5 bg-slate-50/50 rounded-lg p-1.5">
-            <span className={`text-[12px] font-bold ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>{isUp ? '▲' : '▼'} {dynamicPct}%</span>
-            <span className="text-[11px] font-bold text-slate-800">vs Jul 2026</span>
-          </div>
         </div>
       );
     }
     return null;
   };
 
-  const getChartJsData = (dataArray) => {
-    return {
-      labels: dataArray.map(d => d.name),
-      datasets: [
-        {
-          label: 'Profit',
-          data: dataArray.map(d => d.totalIncome),
-          backgroundColor: '#22c55e', 
-          borderColor: '#a1a1aa',
-          borderWidth: 1,
-        },
-        {
-          label: 'Loss',
-          data: dataArray.map(d => d.negativeCost),
-          backgroundColor: '#ef4444', 
-          borderColor: '#a1a1aa',
-          borderWidth: 1,
-        }
-      ]
-    };
-  };
+  // Config Chart.js P/L Diverging Bar
+  const getChartJsData = (dataArray) => ({
+    labels: dataArray.map(d => d.name),
+    datasets: [
+      {
+        type: 'line',
+        label: 'Trend',
+        data: dataArray.map(d => d.plLine),
+        borderColor: '#3b82f6', 
+        borderWidth: 2,
+        pointRadius: 0, 
+        pointHoverRadius: 0,
+        fill: false,
+      },
+      {
+        type: 'bar',
+        label: 'Profit',
+        data: dataArray.map(d => d.plProfit),
+        backgroundColor: '#22c55e', 
+        borderColor: '#71717a',
+        borderWidth: 1,
+        borderRadius: { topLeft: 4, topRight: 4 }, // Rounded sedikit di atas
+      },
+      {
+        type: 'bar',
+        label: 'Loss',
+        data: dataArray.map(d => d.plLoss),
+        backgroundColor: '#ef4444', 
+        borderColor: '#71717a',
+        borderWidth: 1,
+        borderRadius: { bottomLeft: 4, bottomRight: 4 }, // Rounded sedikit di bawah
+      }
+    ]
+  });
 
   const chartJsOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    layout: {
-      padding: { top: 10, bottom: 10 }
-    },
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    layout: { padding: { top: 30, bottom: 25 } },
     scales: {
-      x: {
-        stacked: true,
-        grid: { display: false, drawBorder: false },
-        ticks: { font: { size: 10 }, color: '#64748b' }
-      },
+      x: { stacked: true, grid: { display: false, drawBorder: false }, ticks: { font: { size: 10 }, color: '#64748b' } },
       y: {
         stacked: true,
-        grid: {
-          color: (context) => context.tick.value === 0 ? '#000000' : 'rgba(0,0,0,0)',
-          lineWidth: (context) => context.tick.value === 0 ? 1.5 : 0,
-          drawBorder: false
-        },
+        grace: '20%', // Menambah ruang atas bawah agar bar tidak boncel/pendek
+        grid: { color: (c) => c.tick.value === 0 ? '#000000' : 'transparent', lineWidth: (c) => c.tick.value === 0 ? 1.5 : 0, drawBorder: false },
         ticks: { display: false } 
       }
     },
     plugins: {
-      legend: {
-        display: true,
-        position: 'top',
-        labels: { boxWidth: 12, font: { size: 11 } }
-      },
+      legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 }, filter: (legendItem) => legendItem.text !== 'Trend' } },
       tooltip: {
-        enabled: false, 
-        external: externalTooltipHandler // Menggunakan custom tooltip
+        backgroundColor: 'rgba(255, 255, 255, 0.95)', // Putih transparan
+        titleColor: '#0f172a',
+        bodyColor: '#334155',
+        borderColor: '#e2e8f0',
+        borderWidth: 1,
+        padding: 12,
+        boxPadding: 4,
+        usePointStyle: true,
+        callbacks: {
+          label: (context) => {
+            if (context.dataset.type === 'line') return null; 
+            let label = context.dataset.label || '';
+            if (label) label += ': ';
+            if (context.parsed.y !== null) label += Math.abs(context.parsed.y).toFixed(2);
+            return label;
+          },
+          labelColor: (context) => {
+            return { borderColor: context.dataset.borderColor, backgroundColor: context.dataset.backgroundColor };
+          }
+        }
       }
     }
   };
@@ -471,9 +416,13 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* FILTER UTAMA DI BAWAH HEADER (PERIODE, PRINCIPAL) */}
-          <header className="flex flex-col xl:flex-row justify-between items-start xl:items-end mb-6 w-full gap-4">
-            <div className="flex flex-wrap items-end gap-3 w-full xl:w-auto" onClick={(e) => e.stopPropagation()}>
+          {/* FILTER UTAMA (KIRI TEKS, KANAN FILTER) */}
+          <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6">
+            <div className="text-[13px] font-bold text-slate-500 whitespace-nowrap order-2 xl:order-1 flex items-center gap-2">
+              <CalendarIcon size={16} className="text-blue-600" /> Data per 31 Agu 2026 
+            </div>
+
+            <div className="flex flex-wrap items-end justify-end gap-3 w-full xl:w-auto order-1 xl:order-2" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
                 <div className="relative">
@@ -497,20 +446,16 @@ const Dashboard = () => {
               <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">Apply</button>
               <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">Reset</button>
             </div>
-            
-            <div className="text-[11px] font-medium text-slate-500 whitespace-nowrap xl:pb-2">
-              Data per 31 Agu 2026 • Pembanding: Jul 2026
-            </div>
           </header>
 
-          {/* SUMMARY CARDS (5 GRID DALAM 1 BARIS) */}
+          {/* SUMMARY CARDS (5 GRID) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3 xl:gap-4 mb-6">
             {[
-              { label: 'Sales Volume', icon: BarChart2, tColor: 'text-emerald-600' },
-              { label: 'Total Principal Cost', icon: CreditCard, tColor: 'text-emerald-600' },
-              { label: 'Cost Per Volume', icon: Clock, tColor: 'text-rose-500' },
-              { label: 'Income', icon: BarChart2, tColor: 'text-emerald-600' },
-              { label: 'Income To Volume', icon: BarChart2, tColor: 'text-emerald-600' }
+              { label: 'Sales Volume', icon: BarChart2 },
+              { label: 'Cost', icon: CreditCard },
+              { label: 'Cost To Volume', icon: Clock },
+              { label: 'Income', icon: BarChart2 },
+              { label: 'Income To Volume', icon: BarChart2 }
             ].map((card, idx) => {
               
               const getDynamicStats = (groupName) => {
@@ -519,8 +464,8 @@ const Dashboard = () => {
                 if (baseVal === 0) return { amount: '0', pct: '0%', isUp: true };
                 let amountStr = '';
                 if (card.label === 'Sales Volume') amountStr = ((baseVal % 8000) / 400 + 1.2).toFixed(2) + ' T';
-                else if (card.label === 'Total Principal Cost') amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
-                else if (card.label === 'Cost Per Volume') amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
+                else if (card.label === 'Cost') amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
+                else if (card.label === 'Cost To Volume') amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
                 else if (card.label === 'Income') amountStr = ((baseVal % 2500) / 400 + 0.8).toFixed(2) + ' B';
                 else if (card.label === 'Income To Volume') amountStr = ((baseVal % 2) / 10 + 0.03).toFixed(2); 
         
@@ -531,23 +476,24 @@ const Dashboard = () => {
               };
 
               const statsGrid = [
-                { label: 'Credit', color: 'bg-blue-600', ...getDynamicStats('Credit Card') },
-                { label: 'Debit', color: 'bg-amber-500', ...getDynamicStats('Debit Card') },
-                { label: 'Acquiring', color: 'bg-emerald-500', ...getDynamicStats('Acquiring') }
+                { label: 'Credit', ...getDynamicStats('Credit Card') },
+                { label: 'Debit', ...getDynamicStats('Debit Card') },
+                { label: 'Acquiring', ...getDynamicStats('Acquiring') }
               ];
 
-              const overallIsUp = idx % 2 === 0;
-              const overallPct = (1.2 + idx * 0.3).toFixed(1);
+              // LOGIKA REVERSE TREND KHUSUS COST & COST TO VOLUME
+              const isReverseTrend = card.label === 'Cost' || card.label === 'Cost To Volume';
+              const colorUp = isReverseTrend ? 'text-rose-500' : 'text-emerald-500';
+              const colorDown = isReverseTrend ? 'text-emerald-500' : 'text-rose-500';
 
               return (
-                <div key={idx} className="bg-white p-4 xl:p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-visible group flex flex-col justify-between hover:border-blue-300 transition-colors z-10 hover:z-50">
+                <div key={idx} className="bg-white p-4 xl:p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden flex flex-col justify-between">
                   <div className="absolute top-0 left-0 w-full h-[3px] bg-amber-400 rounded-t-2xl"></div>
                   <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-1.5 cursor-pointer">
-                      <p className="text-[10px] xl:text-[11px] font-bold text-slate-400 uppercase tracking-wider">{card.label}</p>
-                      <Info size={14} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[10px] xl:text-[11px] font-bold text-slate-500 uppercase tracking-wider">{card.label}</p>
                     </div>
-                    <div className="w-8 h-8 xl:w-10 xl:h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+                    <div className="w-8 h-8 xl:w-10 xl:h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
                       <card.icon size={16} strokeWidth={1.5} />
                     </div>
                   </div>
@@ -558,35 +504,19 @@ const Dashboard = () => {
                         <div className="bg-slate-50/70 py-1.5 px-1 rounded-lg border border-slate-100 w-full text-center">
                           <span className="text-[11px] xl:text-[13px] font-bold text-slate-800">{stat.amount}</span>
                         </div>
-                        <div className="flex items-center justify-center gap-0.5 mt-1">
-                          <span className={`text-[8px] ${stat.isUp ? 'text-emerald-500' : 'text-rose-500'}`}>{stat.isUp ? '▲' : '▼'}</span>
-                          <span className={`text-[9px] font-bold ${stat.isUp ? 'text-emerald-600' : 'text-rose-600'}`}>{stat.pct}</span>
+                        <div className="flex flex-col items-center justify-center mt-1">
+                          <div className="flex items-center gap-0.5">
+                            <span className={`text-[8px] ${stat.isUp ? colorUp : colorDown}`}>{stat.isUp ? '▲' : '▼'}</span>
+                            <span className={`text-[9px] font-bold ${stat.isUp ? colorUp : colorDown}`}>{stat.pct}</span>
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
-
-                  <div className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-2 w-[220px] bg-white border border-slate-200 rounded-xl shadow-[0_15px_40px_-10px_rgba(0,0,0,0.2)] p-4 text-[13px] text-slate-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 pointer-events-none origin-top scale-95 group-hover:scale-100">
-                    <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{card.label} Breakdown</p>
-                    <div className="flex flex-col gap-2">
-                      {statsGrid.map((entry, idx2) => (
-                        <div key={idx2} className="flex justify-between items-center text-[12px]">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2.5 h-2.5 rounded-full ${entry.color}`}></div>
-                            <span className="text-slate-600 font-medium">{entry.label}:</span>
-                          </div>
-                          <span className="font-bold text-slate-800 ml-4">{entry.amount}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex justify-center items-center gap-1.5 bg-slate-50/50 rounded-lg p-1.5">
-                      <span className={`text-[12px] font-bold ${overallIsUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        {overallIsUp ? '▲' : '▼'} {overallPct}%
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-800">vs Jul 2026</span>
-                    </div>
+                  {/* TEKS VS JUL 2026 DI BAWAH 1 KALI SAJA */}
+                  <div className="text-center mt-3 pt-2 border-t border-slate-50 border-dashed">
+                    <span className="text-[10px] font-medium text-slate-400">vs Jul 2026</span>
                   </div>
-
                 </div>
               );
             })}
@@ -595,109 +525,106 @@ const Dashboard = () => {
           {/* MAIN CHARTS AREA */}
           <div className="grid grid-cols-12 gap-5 pb-10">
 
-            {/* --- BARISAN 3 MINI GRIDS (CREDIT, DEBIT, ACQUIRING) --- */}
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
+            {/* --- BARISAN 1: 3 COMBO GRIDS (CREDIT, DEBIT, ACQUIRING) --- */}
+            {/* Note: 2 Bar per bulan (Sales Volume & Cost) merapat. Line chart (Cost To Volume) melayang bebas di atas agar tidak nabrak */}
+            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">Credit</h3>
               </div>
               <div className="flex-1 w-full overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.creditChartData} margin={{top: 10, bottom: 0, right: 0, left: -20}}>
+                  {/* barGap=0 agar kedua bar per bulan saling menempel (mepet) */}
+                  <ComposedChart data={dashboardData.creditChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
+                    
+                    {/* YAxis (Kiri) Ditingkatkan domainnya x 2.2 agar Bar menjadi pendek (berada di bawah) */}
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 1.2)]} />
-                    <RechartsTooltip content={<CustomInterchangeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                    
+                    {/* YAxis (Kanan) Diset agak tinggi agar Line Chart selalu melayang di paruh atas dan tidak nabrak */}
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
+                    
+                    <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={30} radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost" stroke="#ef4444" strokeWidth={2} dot={false} activeDot={{r: 4}} />
-                    <Line yAxisId="right" type="monotone" dataKey="totalIncome" name="Income" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{r: 4}} />
+                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    
+                    {/* Line Chart murni tanpa node/titik */}
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
+            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">Debit</h3>
               </div>
               <div className="flex-1 w-full overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.debitChartData} margin={{top: 10, bottom: 0, right: 0, left: -20}}>
+                  <ComposedChart data={dashboardData.debitChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 1.2)]} />
-                    <RechartsTooltip content={<CustomInterchangeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
+                    <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={30} radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost" stroke="#ef4444" strokeWidth={2} dot={false} activeDot={{r: 4}} />
-                    <Line yAxisId="right" type="monotone" dataKey="totalIncome" name="Income" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{r: 4}} />
+                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
+            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px]">
               <div className="flex justify-between items-center mb-2">
                 <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">Acquiring</h3>
               </div>
               <div className="flex-1 w-full overflow-visible mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={dashboardData.acquiringChartData} margin={{top: 10, bottom: 0, right: 0, left: -20}}>
+                  <ComposedChart data={dashboardData.acquiringChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 3.5)]} />
-                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => Math.ceil(dataMax * 1.2)]} />
-                    <RechartsTooltip content={<CustomInterchangeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => dataMax * 1.5]} />
+                    <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
-                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={30} radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="principalCost" name="Cost" stroke="#ef4444" strokeWidth={2} dot={false} activeDot={{r: 4}} />
-                    <Line yAxisId="right" type="monotone" dataKey="totalIncome" name="Income" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{r: 4}} />
+                    <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* --- BARISAN KE-4: 3 GRID P/L MENGGUNAKAN CHART.JS AGAR PERSIS SEPERTI GAMBAR DIVERGING BAR CHART --- */}
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L Credit</h3>
-              </div>
-              <div className="flex-1 w-full overflow-hidden mt-2 relative">
-                <ChartJsBar 
-                  data={getChartJsData(dashboardData.creditChartData)} 
-                  options={chartJsOptions} 
-                />
-              </div>
-            </div>
+            {/* --- BARISAN 2: 3 GRID P/L MENGGUNAKAN CHART.JS (DIVERGING BAR + LINE) --- */}
+            {/* Note: 1 Bulan 1 Bar (Mutlak Profit ATAU Loss). Line menunjuk 0 jika Loss dan memiliki GAP dari atas bar Hijau. */}
+            {['Credit', 'Debit', 'Acquiring'].map((group, index) => {
+              
+              const currentData = group === 'Credit' ? dashboardData.creditChartData : 
+                                  group === 'Debit' ? dashboardData.debitChartData : 
+                                  dashboardData.acquiringChartData;
 
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L Debit</h3>
-              </div>
-              <div className="flex-1 w-full overflow-hidden mt-2 relative">
-                <ChartJsBar 
-                  data={getChartJsData(dashboardData.debitChartData)} 
-                  options={chartJsOptions} 
-                />
-              </div>
-            </div>
-
-            <div className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[320px]">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L Acquiring</h3>
-              </div>
-              <div className="flex-1 w-full overflow-hidden mt-2 relative">
-                <ChartJsBar 
-                  data={getChartJsData(dashboardData.acquiringChartData)} 
-                  options={chartJsOptions} 
-                />
-              </div>ava
-            </div>
+              return (
+                <div key={index} className="col-span-12 lg:col-span-4 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[350px] relative">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-[#0f172a] tracking-tight text-[15px]">P/L {group}</h3>
+                  </div>
+                  <div className="flex-1 w-full overflow-hidden mt-2 relative">
+                    <ChartJsComponent 
+                      type='bar'
+                      data={getChartJsData(currentData)} 
+                      options={chartJsOptions} 
+                      plugins={[customLabelsPlugin]} 
+                    />
+                  </div>
+                </div>
+              );
+            })}
 
           </div>
         </div>

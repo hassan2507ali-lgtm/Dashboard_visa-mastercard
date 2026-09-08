@@ -58,11 +58,10 @@ const customLabelsPlugin = {
       
       meta.data.forEach((element, index) => {
         const dataValue = dataset.data[index];
-        // Hapus filter dataValue === 0 agar tulisan 0% tetap muncul saat Loss
         if (dataValue === undefined || dataValue === null || !element) return; 
         
         const x = element.x;
-        // Tambahkan simbol persen (%) di teksnya (termasuk 0%)
+        // Tambahkan simbol persen (%) di teksnya
         const displayValue = Math.abs(dataValue).toFixed(0) + '%';
         
         ctx.fillStyle = '#3b82f6'; // Warna biru untuk teks line
@@ -142,6 +141,19 @@ const Dashboard = () => {
     acquiringChartData: [],
     groupStats: [],
   });
+
+  // LOGIKA TEKS DINAMIS UNTUK HEADER DAN VS BULAN
+  const periodTexts = {
+    'All': { header: '31 Agu 2026', vs: 'Jul 2026' },
+    'Agustus 2026': { header: '31 Agu 2026', vs: 'Jul 2026' },
+    'Juli 2026': { header: '31 Jul 2026', vs: 'Jun 2026' },
+    'Juni 2026': { header: '30 Jun 2026', vs: 'Mei 2026' },
+    'Mei 2026': { header: '31 Mei 2026', vs: 'Apr 2026' },
+    'April 2026': { header: '30 Apr 2026', vs: 'Mar 2026' }
+  };
+  const currentPeriodInfo = periodTexts[appliedFilters.periode] || periodTexts['All'];
+  const headerDateTxt = currentPeriodInfo.header;
+  const vsMonthTxt = currentPeriodInfo.vs;
 
   // ==========================================
   // 3. LOGIKA FILTERING & AGREGASI (DINAMIS)
@@ -273,7 +285,6 @@ const Dashboard = () => {
     setAppliedFilters({ periode: 'All', principal: 'All' });
   };
   const handleLogout = () => alert("Logout berhasil!");
-  const handleViewDetail = () => navigate('/detail-cost');
   
   // Tooltip Combo Chart (Recharts) dengan Background Transparan Putih
   const CustomTrendTooltip = ({ active, payload, label }) => {
@@ -283,7 +294,7 @@ const Dashboard = () => {
           <p className="font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2 text-[14px]">{label}</p>
           <div className="flex flex-col gap-1.5">
             {payload?.map((entry, index) => {
-              const displayValue = entry.name === '% Cost To Volume' 
+              const displayValue = entry.name === 'Cost To Volume' 
                 ? Number(entry.value || 0).toFixed(4)
                 : Math.abs(entry.value || 0).toFixed(2);
               return (
@@ -309,7 +320,7 @@ const Dashboard = () => {
     datasets: [
       {
         type: 'line',
-        label: '%Margin to Volume', 
+        label: 'Percentage Margin to Volume', 
         data: dataArray.map(d => d.plLine),
         borderColor: '#3b82f6', 
         borderWidth: 2.5, 
@@ -378,14 +389,12 @@ const Dashboard = () => {
             let label = context.dataset.label || '';
             if (label) label += ': ';
             
-            // JIKA LINE CHART (Percentage Margin), ambil nilai aslinya untuk tooltip agar terlihat saat loss
             if (context.dataset.type === 'line') {
               const profitVal = context.chart.data.datasets[1].data[context.dataIndex] || 0;
               const lossVal = context.chart.data.datasets[2].data[context.dataIndex] || 0;
-              const actualMargin = profitVal > 0 ? profitVal : lossVal; // Menangkap persentase asli (bisa minus)
+              const actualMargin = profitVal > 0 ? profitVal : lossVal; 
               label += actualMargin.toFixed(1) + '%';
             } else {
-              // Untuk bar Profit & Loss
               if (context.parsed.y !== null) label += Math.abs(context.parsed.y).toFixed(1) + '%';
             }
             return label;
@@ -452,7 +461,7 @@ const Dashboard = () => {
           {/* FILTER UTAMA (KIRI TEKS, KANAN FILTER) */}
           <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6">
             <div className="text-[13px] font-bold text-slate-500 whitespace-nowrap order-2 xl:order-1 flex items-center gap-2">
-              <CalendarIcon size={16} className="text-blue-600" /> Data per 31 Agu 2026 • Pembanding: Jul 2026
+              <CalendarIcon size={16} className="text-blue-600" /> Data per {headerDateTxt}
             </div>
 
             <div className="flex flex-wrap items-end justify-end gap-3 w-full xl:w-auto order-1 xl:order-2" onClick={(e) => e.stopPropagation()}>
@@ -514,7 +523,7 @@ const Dashboard = () => {
                 { label: 'Acquiring', ...getDynamicStats('Acquiring') }
               ];
 
-              const isReverseTrend = card.label === 'Cost' || card.label === '% Cost To Volume';
+              const isReverseTrend = card.label === 'Cost' || card.label === 'Cost To Volume';
               const colorUp = isReverseTrend ? 'text-rose-500' : 'text-emerald-500';
               const colorDown = isReverseTrend ? 'text-emerald-500' : 'text-rose-500';
 
@@ -546,7 +555,7 @@ const Dashboard = () => {
                     ))}
                   </div>
                   <div className="text-center mt-3 pt-2 border-t border-slate-50 border-dashed">
-                    <span className="text-[10px] font-medium text-slate-400">vs Jul 2026</span>
+                    <span className="text-[10px] font-medium text-slate-400">vs {vsMonthTxt}</span>
                   </div>
                 </div>
               );
@@ -566,15 +575,17 @@ const Dashboard = () => {
                   <ComposedChart data={dashboardData.creditChartData} barGap={0} barCategoryGap="20%" margin={{top: 10, bottom: 0, right: 0, left: -20}}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dy={5} />
+                    
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={-5} width={35} domain={[0, dataMax => Math.ceil((dataMax || 1) * 1.8)]} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#64748b'}} dx={5} width={35} domain={[0, dataMax => ((dataMax || 1) * 1.1)]} />
+                    
                     <RechartsTooltip content={<CustomTrendTooltip />} cursor={{ fill: '#f8fafc' }} />
                     <RechartsLegend verticalAlign="top" wrapperStyle={{ fontSize: '11px', paddingBottom: '10px' }} />
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -596,7 +607,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -618,7 +629,7 @@ const Dashboard = () => {
                     
                     <Bar yAxisId="left" dataKey="salesVolume" name="Sales Vol" fill="#2563eb" maxBarSize={15} radius={[2, 2, 0, 0]} />
                     <Bar yAxisId="left" dataKey="principalCost" name="Cost" fill="#eab308" maxBarSize={15} radius={[2, 2, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="% Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
+                    <Line yAxisId="right" type="monotone" dataKey="costToVolume" name="Cost To Volume" stroke="#ef4444" strokeWidth={2.5} dot={false} activeDot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>

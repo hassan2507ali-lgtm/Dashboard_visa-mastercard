@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
@@ -6,7 +6,7 @@ import {
   Filter, Settings2, X, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { 
-  ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 
@@ -19,25 +19,44 @@ import LogoMandiri from './danatara.png';
 // ==========================================
 const generateChartData = () => {
   const data = [];
-  let currentDate = new Date(2026, 0, 1);
+  // Data mulai dari tahun sebelumnya (2025) agar filter tanggal bisa mundur ke tahun lalu
+  let currentDate = new Date(2025, 0, 1);
   const endDate = new Date(2026, 11, 31);
+  // Target jumlah billing per bulan, dipisah antara billing Income & billing Cost
+  // (masing-masing 15 - 100 / bulan, jadi total All = 30 - 200 / bulan)
+  const monthlyBillingTarget = {};
   
   while (currentDate <= endDate) {
-    const amountRaw = Math.floor(Math.random() * 40000000) + 5000000;
-    const billingCount = Math.floor(Math.random() * 400) + 100;
-    
-    const startDate = new Date(currentDate.getFullYear(), 0, 1);
-    const days = Math.floor((currentDate - startDate) / (24 * 60 * 60 * 1000));
-    const weekNumber = Math.ceil((currentDate.getDay() + 1 + days) / 7);
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const day = currentDate.getDate();
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+    // Dummy: Income & Cost dalam Rupiah
+    const incomeRaw = Math.floor(Math.random() * 40000000) + 20000000;
+    const costRaw = Math.floor(Math.random() * 25000000) + 5000000;
+
+    // Billing Line: target bulanan dibagi rata ke hari-hari di bulan tsb,
+    // sehingga total sebulan = target (mis. 33, 100, 187)
+    if (!(monthKey in monthlyBillingTarget)) {
+      monthlyBillingTarget[monthKey] = {
+        income: Math.floor(Math.random() * 86) + 15,
+        cost: Math.floor(Math.random() * 86) + 15,
+      };
+    }
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const spreadDaily = (target) => Math.floor(target / daysInMonth) + (day <= target % daysInMonth ? 1 : 0);
+    const billingIncomeCount = spreadDaily(monthlyBillingTarget[monthKey].income);
+    const billingCostCount = spreadDaily(monthlyBillingTarget[monthKey].cost);
 
     data.push({
       date: new Date(currentDate),
-      dateString: `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`,
-      weekKey: `${currentDate.getFullYear()}-W${weekNumber}`,
-      monthKey: `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}`,
-      yearKey: `${currentDate.getFullYear()}`,
-      amount: amountRaw,
-      billing: billingCount
+      dateString: `${monthKey}-${String(day).padStart(2,'0')}`,
+      monthKey,
+      income: incomeRaw,
+      cost: costRaw,
+      billingIncome: billingIncomeCount, // jumlah billing yang termasuk Income
+      billingCost: billingCostCount      // jumlah billing yang termasuk Cost
     });
     currentDate.setDate(currentDate.getDate() + 1);
   }
@@ -47,19 +66,18 @@ const generateChartData = () => {
 const CHART_DB = generateChartData();
 
 // ==========================================
-// 2. GENERATE DUMMY DATA UNTUK TABEL
-// Kolom diperlengkap sesuai instruksi baru
+// 2. GENERATE DUMMY DATA UNTUK TABEL BARU (SESUAI EXCEL BARU)
 // ==========================================
 const TABLE_TEMPLATES = [
-  { category: 'Income', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', ica: '-', billingLine: 'Interchange Local', description: 'Mastercard Local', principalFeeType: '-', principalCategory: 'Interchange', principalSubCategory: 'Local' },
-  { category: 'Cost', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', ica: '-', billingLine: 'Interchange Intl', description: 'Mastercard International', principalFeeType: '-', principalCategory: 'Interchange', principalSubCategory: 'International' },
-  { category: 'Cost', tagging: 'Weekly', principal: 'Mastercard', group: 'Acquiring', ica: '12375', billingLine: '2LS2000', description: 'SMS Acquirer Non-Local Currency Fee', principalFeeType: 'Acquirer Fees', principalCategory: 'Other Acquiring Services', principalSubCategory: 'Currency Settlement' },
-  { category: 'Cost', tagging: 'Daily', principal: 'Visa', group: 'Credit Card', ica: '-', billingLine: 'Daily', description: 'Daily Service Visa Credit', principalFeeType: '-', principalCategory: 'Card Service Fee', principalSubCategory: 'Service' },
-  { category: 'Cost', tagging: 'Daily', principal: 'Visa', group: 'Debit Card', ica: '-', billingLine: 'Daily', description: 'Daily Service Visa Debit', principalFeeType: '-', principalCategory: 'Card Service Fee', principalSubCategory: 'Service' },
-  { category: 'Cost', tagging: 'MTI', principal: 'Visa', group: 'Acquiring', ica: '-', billingLine: 'MTI', description: 'Biaya Acquiring MTI', principalFeeType: '-', principalCategory: 'Transaction Service Fee', principalSubCategory: 'MTI' },
-  { category: 'Cost', tagging: 'Monthly', principal: 'Visa', group: 'Credit Card', ica: '-', billingLine: '4M6163460', description: 'VISA ADVANCED AUTHORISATION', principalFeeType: '-', principalCategory: 'Reports', principalSubCategory: 'Risk Manager' },
-  { category: 'Cost', tagging: 'Lisence', principal: 'Visa', group: 'Acquiring', ica: '-', billingLine: '4B1102010', description: 'ACQUIRING LICENSE FEES', principalFeeType: 'License Fees', principalCategory: 'License Fees', principalSubCategory: 'Acquirer License Fee' },
-  { category: 'Cost', tagging: 'Quarterly', principal: 'Visa', group: 'Debit Card', ica: '-', billingLine: '4CSF03100', description: 'VISA GOLD CARD FEES', principalFeeType: 'Acquirer Assessments', principalCategory: 'Acquirer Assessments', principalSubCategory: 'Consumer Products' },
+  { jenis: 'Interchange', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange Local', desc: 'Mastercard Local', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Interchange', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange International', desc: 'Mastercard International', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Weekly', principal: 'Mastercard', group: '-', status: 'Current Billing', ica: '12375', billingLine: '2LS2000', desc: 'SMS Acquirer Non-Local Currency Fee', feeType: 'Acquirer Fees', category: 'Other Acquiring Services', subCategory: 'Currency Settlement' },
+  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Credit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Credit', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Daily', principal: 'Visa', group: 'Debit', status: 'Current Billing', ica: '-', billingLine: 'Daily', desc: 'Daily Service Visa Debit', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'MTI', principal: 'Visa', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'MTI', desc: 'Biaya Acquiring MTI', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Monthly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4M6163460', desc: 'VISA ADVANCED AUTHORISATION AND VISA RISK MANAGER - DC', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Service Fee', tagging: 'Lisence', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4B1102010', desc: 'ACQUIRING LICENSE FEES - INTERNATIONAL', feeType: 'License Fees', category: 'License Fees', subCategory: 'Acquirer License Fee' },
+  { jenis: 'Service Fee', tagging: 'Quarterly', principal: 'Visa', group: '-', status: 'Current Billing', ica: '-', billingLine: '4CSF03100', desc: 'VISA GOLD CARD FEES - CONSUMER PRODUCTS', feeType: '-', category: '-', subCategory: '-' },
 ];
 
 const generateTableData = () => {
@@ -71,11 +89,11 @@ const generateTableData = () => {
     const month = months[Math.floor(Math.random() * months.length)];
     const rawAmount = (Math.random() * 500000000) + 1000000;
     
-    // Eqv Idr bisa berbeda jika ada rate exchange (USD/IDR), disimulasikan secara acak
+    // Eqv Idr bisa berbeda jika ada rate exchange, disimulasikan secara acak
     const isUsd = Math.random() > 0.8;
     const eqvIdr = isUsd ? rawAmount * 15500 : rawAmount;
 
-    // Format tanggal dummy
+    // Buat format tanggal dummy sesuai dengan bulan terpilih (Contoh: 15-Jan-2026)
     const day = Math.floor(Math.random() * 28) + 1;
     const shortMonth = month.substring(0, 3);
     const year = month.slice(-4);
@@ -83,20 +101,21 @@ const generateTableData = () => {
 
     data.push({
       id: `TRX-${10000 + i}`,
-      category: template.category,
+      jenisTransaksi: template.jenis,
       tagging: template.tagging,
       principal: template.principal,
       group: template.group,
+      status: template.status,
       tanggal: tanggal,
+      month: month, // Digunakan untuk filter logika Start/End Periode
       ica: template.ica,
       billingLine: template.billingLine,
-      description: template.description,
-      amount: rawAmount,
+      description: template.desc,
+      total: rawAmount,
       eqvIdr: eqvIdr,
-      principalFeeType: template.principalFeeType,
-      principalCategory: template.principalCategory,
-      principalSubCategory: template.principalSubCategory,
-      month: month // Untuk filter logika Start/End Periode
+      principalFeeType: template.feeType,
+      principalCategory: template.category,
+      principalSubCategory: template.subCategory
     });
   }
   return data;
@@ -104,16 +123,16 @@ const generateTableData = () => {
 
 const TABLE_DB = generateTableData();
 
-// Opsi dropdown filter sesuai instruksi baru
+// Opsi dropdown disesuaikan dengan gambar
 const FILTER_OPTIONS = {
-  category: ['Cost', 'Income'],
-  group: ['Acquiring', 'Credit Card', 'Debit Card'],
-  billingLine: ['Interchange Local', 'Interchange Intl', '2LS2000', 'Daily', 'MTI', '4M6163460', '4B1102010', '4CSF03100'],
-  principalCategory: ['Interchange', 'Other Acquiring Services', 'Card Service Fee', 'Transaction Service Fee', 'Reports', 'License Fees', 'Acquirer Assessments'],
-  principalSubCategory: ['Local', 'International', 'Currency Settlement', 'Service', 'MTI', 'Risk Manager', 'Acquirer License Fee', 'Consumer Products'],
+  jenisTransaksi: ['Interchange', 'Service Fee'],
+  tagging: ['Interchange Local', 'Interchange International', 'Weekly', 'Daily', 'MTI', 'Monthly', 'Lisence', 'Quarterly'],
+  principal: ['Visa', 'Mastercard'],
+  group: ['Acquiring', 'Credit', 'Debit'],
   month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026']
 };
 
+// Logika pemetaan bulan untuk komparasi rentang tanggal Start & End
 const MONTH_ORDER = {
   'Januari 2026': 1,
   'Februari 2026': 2,
@@ -135,6 +154,43 @@ const formatBilling = (value) => {
   return value.toString();
 };
 
+// Warna line chart (mengikuti referensi: biru tua, oranye, biru muda)
+const LINE_SERIES = [
+  { key: 'billingLine', name: 'Billing Line', color: '#4A6FA5', axis: 'right', labelPos: 'top', labelColor: '#4A6FA5' },
+  { key: 'income', name: 'Income', color: '#ED7D31', axis: 'left', labelPos: 'top', labelColor: '#D9661F' },
+  { key: 'cost', name: 'Cost', color: '#8EC3EA', axis: 'left', labelPos: 'bottom', labelColor: '#3B8FD0' }, // label lebih gelap agar terbaca
+];
+
+// Label nilai di setiap titik (dot) line chart
+// position: 'top' = di atas titik, 'bottom' = di bawah titik
+const makePointLabel = (formatter, color, position = 'top') => (props) => {
+  const { x, y, value } = props;
+  if (value == null) return null;
+  return (
+    <text x={x} y={position === 'top' ? y - 12 : y + 20} fill={color} fontSize={10} fontWeight={700} textAnchor="middle">
+      {formatter(value)}
+    </text>
+  );
+};
+
+// Default filter: awal tahun berjalan s/d hari ini
+const toInputDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const TODAY = new Date();
+const DEFAULT_START_DATE = `${TODAY.getFullYear()}-01-01`;
+const DEFAULT_END_DATE = toInputDate(TODAY);
+const DATE_MIN = CHART_DB[0].dateString;
+const DATE_MAX = CHART_DB[CHART_DB.length - 1].dateString;
+
+// Filter "Tampilkan": line apa saja yang muncul di chart (Billing Line selalu tampil)
+const VIEW_OPTIONS = {
+  All: ['billingLine', 'income', 'cost'],
+  Income: ['billingLine', 'income'],
+  Cost: ['billingLine', 'cost'],
+};
+
+// Jika rentang tanggal sangat panjang, label per titik disembunyikan agar tidak menumpuk
+const MAX_POINTS_WITH_LABEL = 24;
+
 const formatDecimal = (num) => {
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
@@ -146,17 +202,17 @@ const DetailCost = () => {
   // 3. STATE MANAGEMENT
   // ==========================================
   const [chartFilters, setChartFilters] = useState({
-    eventId: 'All', principal: 'All', eventDesc: 'All', timeView: 'Daily'
+    startDate: DEFAULT_START_DATE, endDate: DEFAULT_END_DATE, view: 'All'
   });
-  const [chartData, setChartData] = useState([]);
 
-  // State Tabel
+  // State Tabel Diperbarui (Sesuai dengan kolom baru, Periode tetap dipertahankan)
   const [tableFilters, setTableFilters] = useState({
-    category: 'All', 
+    jenisTransaksi: 'All', 
+    tagging: 'All',
+    principal: 'All', 
     group: 'All', 
-    billingLine: 'All',
-    principalCategory: 'All',
-    principalSubCategory: 'All'
+    startPeriode: 'All', 
+    endPeriode: 'All'
   });
   const [appliedTableFilters, setAppliedTableFilters] = useState({ ...tableFilters });
   const [filteredTableData, setFilteredTableData] = useState(TABLE_DB);
@@ -171,71 +227,104 @@ const DetailCost = () => {
   // ==========================================
   // 4. LOGIKA AGREGASI GRAFIK
   // ==========================================
-  useEffect(() => {
-    const timeView = chartFilters.timeView;
+  const chartData = useMemo(() => {
+    const { startDate, endDate, view } = chartFilters;
+    // Jika tanggal awal > tanggal akhir, tukar otomatis
+    const [start, end] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
     const aggMap = {};
 
     CHART_DB.forEach(item => {
-      let key = '';
-      let label = '';
+      // Filter rentang tanggal (format YYYY-MM-DD bisa dibandingkan sebagai string)
+      if ((start && item.dateString < start) || (end && item.dateString > end)) return;
 
-      if (timeView === 'Daily') {
-        key = item.dateString;
-        label = item.date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-      } else if (timeView === 'Weekly') {
-        key = item.weekKey;
-        label = item.weekKey.replace('-', ' ');
-      } else if (timeView === 'Monthly') {
-        key = item.monthKey;
-        label = item.date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
-      } else {
-        key = item.yearKey;
-        label = item.yearKey;
-      }
+      // Agregasi per bulan (sumbu X = bulan)
+      const key = item.monthKey;
+      const label = item.date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
 
       if (!aggMap[key]) {
-        aggMap[key] = { dateLabel: label, amount: 0, billing: 0, sortKey: key };
+        aggMap[key] = { dateLabel: label, income: 0, cost: 0, billingIncome: 0, billingCost: 0, sortKey: key };
       }
-      aggMap[key].amount += item.amount;
-      aggMap[key].billing += item.billing;
+      aggMap[key].income += item.income;
+      aggMap[key].cost += item.cost;
+      aggMap[key].billingIncome += item.billingIncome;
+      aggMap[key].billingCost += item.billingCost;
     });
 
-    let newChartData = Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-
-    if (timeView === 'Daily') newChartData = newChartData.slice(-30); 
-    if (timeView === 'Weekly') newChartData = newChartData.slice(-12);
-
-    setChartData(newChartData);
+    // Billing Line mengikuti filter "Tampilkan":
+    // Income -> hanya billing Income, Cost -> hanya billing Cost, All -> keduanya dijumlah
+    return Object.values(aggMap)
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(d => ({
+        ...d,
+        billingLine: view === 'Income' ? d.billingIncome
+          : view === 'Cost' ? d.billingCost
+          : d.billingIncome + d.billingCost,
+      }));
   }, [chartFilters]);
+
+  // Line yang ditampilkan sesuai filter "Tampilkan"
+  const visibleSeries = LINE_SERIES.filter(s => VIEW_OPTIONS[chartFilters.view].includes(s.key));
+
+  // Sumbu Y disembunyikan, tapi domain diatur supaya Billing Line (jumlah) ada di area atas
+  // dan Income/Cost (Rupiah) di area bawah, jadi line & label tidak saling tumpuk
+  const yDomains = useMemo(() => {
+    if (chartData.length === 0) return { left: [0, 1], right: [0, 1] };
+    const bill = chartData.map(d => d.billingLine);
+    const moneyKeys = VIEW_OPTIONS[chartFilters.view].filter(k => k !== 'billingLine');
+    const money = chartData.flatMap(d => moneyKeys.map(k => d[k]));
+    const bMin = Math.min(...bill), bMax = Math.max(...bill), bRange = (bMax - bMin) || bMax || 1;
+    const mMin = Math.min(...money), mMax = Math.max(...money), mRange = (mMax - mMin) || mMax || 1;
+    return {
+      right: [bMin - bRange * 2.2, bMax + bRange * 0.4],
+      left: [mMin - mRange * 0.4, mMax + mRange * 1.5],
+    };
+  }, [chartData, chartFilters.view]);
+
+  const showPointLabels = chartData.length <= MAX_POINTS_WITH_LABEL;
 
   // ==========================================
   // 5. LOGIKA FILTERING & RESET HALAMAN TABEL
   // ==========================================
   useEffect(() => {
     const result = TABLE_DB.filter(row => {
-      const passCategory = appliedTableFilters.category === 'All' || row.category === appliedTableFilters.category;
+      const passJenis = appliedTableFilters.jenisTransaksi === 'All' || row.jenisTransaksi === appliedTableFilters.jenisTransaksi;
+      const passTagging = appliedTableFilters.tagging === 'All' || row.tagging === appliedTableFilters.tagging;
+      const passPrincipal = appliedTableFilters.principal === 'All' || row.principal === appliedTableFilters.principal;
       const passGroup = appliedTableFilters.group === 'All' || row.group === appliedTableFilters.group;
-      const passBillingLine = appliedTableFilters.billingLine === 'All' || row.billingLine === appliedTableFilters.billingLine;
-      const passPrinCat = appliedTableFilters.principalCategory === 'All' || row.principalCategory === appliedTableFilters.principalCategory;
-      const passPrinSubCat = appliedTableFilters.principalSubCategory === 'All' || row.principalSubCategory === appliedTableFilters.principalSubCategory;
 
-      return passCategory && passGroup && passBillingLine && passPrinCat && passPrinSubCat;
+      // Logika Filter Rentang Periode (Bulan) TETAP DIPERTAHANKAN
+      let passPeriode = true;
+      const rowMonthIdx = MONTH_ORDER[row.month];
+      const startIdx = appliedTableFilters.startPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.startPeriode] : 0;
+      const endIdx = appliedTableFilters.endPeriode !== 'All' ? MONTH_ORDER[appliedTableFilters.endPeriode] : 999;
+
+      if (rowMonthIdx) {
+        passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
+      }
+
+      return passJenis && passTagging && passPrincipal && passGroup && passPeriode;
     });
     setFilteredTableData(result);
-    setCurrentPage(1); 
+    setCurrentPage(1); // Reset ke halaman 1 setiap kali filter diterapkan
   }, [appliedTableFilters]);
 
   const handleApplyTableFilter = () => {
     setAppliedTableFilters({ ...tableFilters });
   };
 
+  // Logika Data yang akan dirender di halaman aktif
   const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentTableData = filteredTableData.slice(startIndex, startIndex + itemsPerPage);
 
   const handleLogout = () => alert("Logout berhasil!");
 
-  const isDaily = chartFilters.timeView === 'Daily';
+  const getBadgeType = (type) => {
+    if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
+    if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
+    return 'bg-slate-100 text-slate-700';
+  };
+
 
   // ==========================================
   // 7. RENDER UI
@@ -315,99 +404,103 @@ const DetailCost = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* SECTION 1: CHART FILTERS */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 gap-5">
-            <div className="flex flex-col md:flex-row gap-5 md:gap-8 w-full md:w-2/3">
-              <div className="flex flex-col gap-2 w-full md:w-1/3">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Event ID / Billing Line</label>
-                <div className="relative border-b border-slate-200 pb-1 flex items-center">
-                  <select className="w-full text-[13px] font-semibold text-slate-700 bg-transparent outline-none cursor-pointer appearance-none pr-6" value={chartFilters.eventId} onChange={(e) => setChartFilters({...chartFilters, eventId: e.target.value})}>
-                    <option value="All">All</option>
-                    <option value="2ZN80637K">2ZN80637K</option>
-                    <option value="2ZN34257K">2ZN34257K</option>
-                  </select>
-                  <ChevronDown size={16} className="text-slate-400 absolute right-0 pointer-events-none" />
-                </div>
+          {/* SECTION 1: CHART FILTERS (rata kanan, ukuran ringkas) */}
+          <div className="flex justify-end mb-6">
+            <div className="flex flex-wrap items-end gap-3 bg-white px-4 py-3 rounded-xl shadow-sm border border-slate-200/60 w-full sm:w-auto">
+              <div className="flex flex-col gap-1 flex-1 sm:flex-none sm:w-[150px]">
+                <label className="text-[11px] font-semibold text-slate-500">Start Date</label>
+                <input
+                  type="date"
+                  min={DATE_MIN} max={DATE_MAX}
+                  className="w-full border border-slate-300 rounded-md px-2 py-1 text-[12px] font-medium text-slate-700 bg-white outline-none focus:border-blue-400 cursor-pointer"
+                  value={chartFilters.startDate}
+                  onChange={(e) => setChartFilters({...chartFilters, startDate: e.target.value})}
+                />
               </div>
 
-              <div className="flex flex-col gap-2 w-full md:w-1/3">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Principal</label>
-                <div className="relative border-b border-slate-200 pb-1 flex items-center">
-                  <select className="w-full text-[13px] font-semibold text-slate-700 bg-transparent outline-none cursor-pointer appearance-none pr-6" value={chartFilters.principal} onChange={(e) => setChartFilters({...chartFilters, principal: e.target.value})}>
-                    <option value="All">All</option>
-                    <option value="Visa">Visa</option>
-                    <option value="Mastercard">Mastercard</option>
-                  </select>
-                  <ChevronDown size={16} className="text-slate-400 absolute right-0 pointer-events-none" />
-                </div>
+              <div className="flex flex-col gap-1 flex-1 sm:flex-none sm:w-[150px]">
+                <label className="text-[11px] font-semibold text-slate-500">End Date</label>
+                <input
+                  type="date"
+                  min={DATE_MIN} max={DATE_MAX}
+                  className="w-full border border-slate-300 rounded-md px-2 py-1 text-[12px] font-medium text-slate-700 bg-white outline-none focus:border-blue-400 cursor-pointer"
+                  value={chartFilters.endDate}
+                  onChange={(e) => setChartFilters({...chartFilters, endDate: e.target.value})}
+                />
               </div>
 
-              <div className="flex flex-col gap-2 w-full md:w-1/3">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Event Description</label>
-                <div className="relative border-b border-slate-200 pb-1 flex items-center">
-                  <select className="w-full text-[13px] font-semibold text-slate-700 bg-transparent outline-none cursor-pointer appearance-none pr-6" value={chartFilters.eventDesc} onChange={(e) => setChartFilters({...chartFilters, eventDesc: e.target.value})}>
-                    <option value="All">All</option>
-                    <option value="Account Inquiry">Account Inquiry</option>
-                    <option value="Acquirer Chargebacks">Acquirer Chargebacks</option>
+              <div className="flex flex-col gap-1 flex-1 sm:flex-none sm:w-[130px]">
+                <label className="text-[11px] font-semibold text-slate-500">Category</label>
+                <div className="relative flex items-center">
+                  <select
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 pr-7 text-[12px] font-medium text-slate-700 bg-white outline-none focus:border-blue-400 cursor-pointer appearance-none"
+                    value={chartFilters.view}
+                    onChange={(e) => setChartFilters({...chartFilters, view: e.target.value})}
+                  >
+                    {Object.keys(VIEW_OPTIONS).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
-                  <ChevronDown size={16} className="text-slate-400 absolute right-0 pointer-events-none" />
+                  <ChevronDown size={14} className="text-slate-500 absolute right-2 pointer-events-none" />
                 </div>
               </div>
-            </div>
-
-            <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner w-full md:w-auto">
-              {['Weekly', 'Monthly', 'Quarterly','Yearly'].map(view => (
-                <button 
-                  key={view}
-                  onClick={() => setChartFilters({...chartFilters, timeView: view})}
-                  className={`flex-1 md:flex-none px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all ${chartFilters.timeView === view ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  {view}
-                </button>
-              ))}
             </div>
           </div>
 
-          {/* SECTION 2: GRAFIK COMPOSED CHART */}
-          <div className="w-full bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 h-[380px] mb-8">
+          {/* SECTION 2: LINE CHART (Billing Line, Income, Cost per bulan) */}
+          <div className="w-full bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200/60 h-[400px] mb-8">
+            {chartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-400 text-[13px] font-medium">
+                Tidak ada data pada rentang tanggal yang dipilih.
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 30, right: 0, left: -20, bottom: isDaily ? 20 : 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              {/* Margin kiri/kanan & padding sumbu X supaya titik + label di ujung tidak terpotong */}
+              <LineChart data={chartData} margin={{ top: 10, right: 30, left: 30, bottom: 5 }}>
+                <CartesianGrid vertical={false} stroke="#eef2f6" />
                 
                 <XAxis 
                   dataKey="dateLabel" 
                   axisLine={{stroke: '#cbd5e1'}} 
                   tickLine={false} 
-                  tick={{fontSize: 11, fill: '#64748b'}} 
+                  tick={{fontSize: 11, fill: '#64748b', fontWeight: 600}} 
                   dy={10} 
-                  angle={isDaily ? -45 : 0} 
-                  textAnchor={isDaily ? "end" : "center"}
-                  minTickGap={-5} 
-                  height={isDaily ? 60 : 30}
+                  padding={{ left: 20, right: 20 }}
+                  interval="preserveStartEnd"
+                  height={35}
                 />
-                <YAxis 
-                  yAxisId="left" axisLine={false} tickLine={false} 
-                  tickFormatter={(t) => formatCurrency(t)} tick={{fontSize: 11, fill: '#64748b', fontWeight: 600}} 
-                  width={70}
-                />
-                <YAxis 
-                  yAxisId="right" orientation="right" axisLine={false} tickLine={false} 
-                  tickFormatter={(t) => formatBilling(t)} tick={{fontSize: 11, fill: '#64748b', fontWeight: 600}} 
-                  width={50}
-                />
+                {/* Sumbu Y disembunyikan, nilai ditampilkan langsung di setiap titik */}
+                <YAxis yAxisId="left" hide domain={yDomains.left} />
+                <YAxis yAxisId="right" orientation="right" hide domain={yDomains.right} />
                 
-                <Tooltip 
-                  cursor={{fill: '#f8fafc'}}
+                <Tooltip
+                  cursor={{ stroke: '#cbd5e1', strokeWidth: 1 }}
                   contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 500 }}
-                  formatter={(value, name) => [name === 'Amount' ? formatCurrency(value) : formatBilling(value), name]}
+                  formatter={(value, name) => [name === 'Billing Line' ? formatBilling(value) : formatCurrency(value), name]}
                 />
-                
-                <Legend verticalAlign="top" align="center" wrapperStyle={{ paddingBottom: '30px', fontSize: '13px', fontWeight: 600, color: '#334155' }} />
 
-                <Bar yAxisId="left" dataKey="amount" name="Amount" fill="#3b82f6" barSize={isDaily ? 14 : 36} radius={[4, 4, 0, 0]} />
-                <Line yAxisId="right" type="monotone" dataKey="billing" name="Billing" stroke="#1e3a8a" strokeWidth={3} dot={{r: 4, fill: '#1e3a8a'}} />
-              </ComposedChart>
+                <Legend
+                  verticalAlign="top" align="left" iconType="square" iconSize={14}
+                  wrapperStyle={{ paddingBottom: '24px', fontSize: '13px', fontWeight: 600 }}
+                  formatter={(value) => <span style={{ color: '#334155', marginRight: 40 }}>{value}</span>}
+                />
+
+                {visibleSeries.map(s => (
+                  <Line
+                    key={s.key}
+                    yAxisId={s.axis}
+                    type="linear"
+                    dataKey={s.key}
+                    name={s.name}
+                    stroke={s.color}
+                    strokeWidth={3}
+                    dot={{ r: 6, fill: s.color, stroke: s.color }}
+                    activeDot={{ r: 8, fill: s.color, stroke: '#fff', strokeWidth: 2 }}
+                    label={showPointLabels ? makePointLabel(s.axis === 'right' ? formatBilling : formatCurrency, s.labelColor, s.labelPos) : false}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </LineChart>
             </ResponsiveContainer>
+            )}
           </div>
 
           {/* SECTION 3: TRANSACTION CONFIGURATION TABLE */}
@@ -421,52 +514,53 @@ const DetailCost = () => {
               <div className="flex flex-col items-end gap-3 w-full lg:w-auto">
                 <div className="flex flex-wrap items-center justify-end gap-2 w-full">
                   
-                  {/* Filter Category (Cost / Income) */}
+                  {/* --- FILTER START PERIODE --- */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.category} onChange={(e) => setTableFilters({...tableFilters, category: e.target.value})}>
-                      <option value="All">Category</option>
-                      {FILTER_OPTIONS.category.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.startPeriode} onChange={(e) => setTableFilters({...tableFilters, startPeriode: e.target.value})}>
+                      <option value="All">Start Periode</option>
+                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Billing Line */}
+                  {/* --- FILTER END PERIODE --- */}
                   <div className="relative flex items-center">
-                    <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.billingLine} onChange={(e) => setTableFilters({...tableFilters, billingLine: e.target.value})}>
-                      <option value="All">Billing Line</option>
-                      {FILTER_OPTIONS.billingLine.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <span className="text-slate-400 mx-1 text-xs font-bold">-</span>
+                    <Settings2 size={13} className="text-slate-400 absolute left-5 pointer-events-none" />
+                    <select className="pl-9 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.endPeriode} onChange={(e) => setTableFilters({...tableFilters, endPeriode: e.target.value})}>
+                      <option value="All">End Periode</option>
+                      {FILTER_OPTIONS.month.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Principal Category */}
+                  {/* Filter Jenis Transaksi */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalCategory} onChange={(e) => setTableFilters({...tableFilters, principalCategory: e.target.value})}>
-                      <option value="All">Principal Category</option>
-                      {FILTER_OPTIONS.principalCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.jenisTransaksi} onChange={(e) => setTableFilters({...tableFilters, jenisTransaksi: e.target.value})}>
+                      <option value="All">Jenis Transaksi</option>
+                      {FILTER_OPTIONS.jenisTransaksi.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                  {/* Filter Principal Sub Category */}
+                  {/* Filter Tagging */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalSubCategory} onChange={(e) => setTableFilters({...tableFilters, principalSubCategory: e.target.value})}>
-                      <option value="All">Principal Sub Cat</option>
-                      {FILTER_OPTIONS.principalSubCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.tagging} onChange={(e) => setTableFilters({...tableFilters, tagging: e.target.value})}>
+                      <option value="All">Tagging</option>
+                      {FILTER_OPTIONS.tagging.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
 
-                    {/* Filter Principal  fee type */}
+                  {/* Filter Principal */}
                   <div className="relative flex items-center">
                     <Settings2 size={13} className="text-slate-400 absolute left-2.5 pointer-events-none" />
-                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer max-w-[150px] truncate" value={tableFilters.principalSubCategory} onChange={(e) => setTableFilters({...tableFilters, principalSubCategory: e.target.value})}>
-                      <option value="All">Principal fee type</option>
-                      {FILTER_OPTIONS.principalSubCategory.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    <select className="pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer" value={tableFilters.principal} onChange={(e) => setTableFilters({...tableFilters, principal: e.target.value})}>
+                      <option value="All">Principal</option>
+                      {FILTER_OPTIONS.principal.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                     <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
                   </div>
@@ -491,11 +585,12 @@ const DetailCost = () => {
             </div>
 
             <div className="w-full overflow-x-auto">
+              {/* Kolomnya diperbanyak, min-w dilebarkan agar tidak terjepit */}
               <table className="w-full text-left border-collapse min-w-[1800px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {['CATEGORY', 'TAGGING', 'PRINCIPAL/SWITCHER', 'GROUP', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
-                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${(head === 'AMOUNT' || head === 'EQV IDR') ? 'text-right' : ''}`}>
+                    {['JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
+                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
                         {head}
                       </th>
                     ))}
@@ -507,21 +602,24 @@ const DetailCost = () => {
                       <tr key={idx} className="hover:bg-slate-50/60 transition-colors group">
                         
                         <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.category === 'Income' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                            {row.category}
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.jenisTransaksi)}`}>
+                            {row.jenisTransaksi}
                           </span>
                         </td>
                         
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.tagging}</td>
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.tagging}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
                         <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
+                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-500">{row.status}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.tanggal}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.ica}</td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[250px] truncate" title={row.description}>
+                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
                           {row.description}
                         </td>
-                   
+                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
+                          {formatDecimal(row.total)}
+                        </td>
                         <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
                           {formatDecimal(row.eqvIdr)}
                         </td>
@@ -533,7 +631,7 @@ const DetailCost = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="13" className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan="14" className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

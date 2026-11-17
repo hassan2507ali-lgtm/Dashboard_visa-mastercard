@@ -23,9 +23,9 @@ import LogoDanantara from './mandiri.png';
 const PRINCIPAL_LIST = ['Visa', 'Mastercard'];
 const METRIC_LIST = [
   { key: 'salesVolume', label: 'Sales Volume' },
-  { key: 'income', label: 'Income' },
-  { key: 'cost', label: 'Cost' },
-  { key: 'margin', label: 'Margin' },
+  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'SV/Income' },
+  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'SV/Cost' },
+  { key: 'margin', label: 'Margin', ratioKey: 'marginRatio', ratioLabel: 'SV/Margin' },
 ];
 
 // Filter jenis transaksi -> mapping ke field `group` di data
@@ -197,6 +197,10 @@ const Dashboard = () => {
           income: Number(d.income.toFixed(2)),
           cost: Number(d.cost.toFixed(2)),
           margin: Number((d.income - d.cost).toFixed(2)),
+          // Rasio terhadap Sales Volume (%) -> dipakai line chart Income / Cost / Margin
+          incomeRatio: d.salesVolume ? Number(((d.income / d.salesVolume) * 100).toFixed(2)) : 0,
+          costRatio: d.salesVolume ? Number(((d.cost / d.salesVolume) * 100).toFixed(2)) : 0,
+          marginRatio: d.salesVolume ? Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)) : 0,
         }));
     };
 
@@ -229,7 +233,7 @@ const Dashboard = () => {
   const handleLogout = () => alert("Logout berhasil!");
   
   // Tooltip Income / Cost / Margin
-  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, data }) => {
+  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, ratioKey, ratioLabel, ratioColor, data }) => {
     if (!active || !payload || !payload.length) return null;
     const row = payload[0].payload;
     const idx = data.indexOf(row);
@@ -245,6 +249,11 @@ const Dashboard = () => {
           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].color }}></div>
           <span className="text-slate-600 font-medium">{metricLabel}:</span>
           <span className="font-bold text-slate-800">{formatValue(row[metricKey])}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ratioColor }}></div>
+          <span className="text-slate-600 font-medium">{ratioLabel}:</span>
+          <span className="font-bold text-slate-800">{formatValue(row[ratioKey])}%</span>
         </div>
         {changePct !== null && (
           <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-3">
@@ -396,7 +405,7 @@ const Dashboard = () => {
                     {METRIC_LIST.map(metric => {
                       // Bar maksimal ~50% tinggi chart, line di pita atas (55%-95%) supaya tidak bersentuhan
                       const isSV = metric.key === 'salesVolume';
-                      const lineKey = isSV ? 'intlShare' : metric.key;
+                      const lineKey = isSV ? 'intlShare' : metric.ratioKey;
                       const barVals = data.map(d => d[metric.key]);
                       const barMax = Math.max(1, ...barVals);
                       const barMin = 0;
@@ -452,9 +461,9 @@ const Dashboard = () => {
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
                                   <YAxis yAxisId="val" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={barDomain} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
                                   <YAxis yAxisId="pct" orientation="right" hide domain={pctDomain} allowDataOverflow />
-                                  <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} data={data} />} cursor={{ fill: '#f8fafc' }} />
+                                  <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} ratioKey={metric.ratioKey} ratioLabel={metric.ratioLabel} ratioColor={ratioColor} data={data} />} cursor={{ fill: '#f8fafc' }} />
                                   <Bar yAxisId="val" dataKey={metric.key} name={metric.label} fill={lineColor} radius={[3, 3, 0, 0]} />
-                                  <Line yAxisId="pct" type="linear" dataKey={metric.key} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                                  <Line yAxisId="pct" type="linear" dataKey={metric.ratioKey} name={metric.ratioLabel} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} />
                                 </ComposedChart>
                               )}
                             </ResponsiveContainer>

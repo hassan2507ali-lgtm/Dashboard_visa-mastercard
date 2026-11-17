@@ -3,14 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
-  BarChart2, Clock, CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
+  CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
   CardSim
 } from 'lucide-react';
 
 // RECHARTS UNTUK LINE CHART PER PRINCIPAL
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, ResponsiveContainer
+  Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 // IMPORT GAMBAR LOGO
@@ -27,6 +27,17 @@ const METRIC_LIST = [
   { key: 'cost', label: 'Cost' },
   { key: 'margin', label: 'Margin' },
 ];
+
+// Filter jenis transaksi -> mapping ke field `group` di data
+const JENIS_OPTIONS = ['Debit', 'Credit', 'Acquiring'];
+const JENIS_TO_GROUP = { Debit: 'Debit Card', Credit: 'Credit Card', Acquiring: 'Acquiring' };
+const DEFAULT_FILTERS = { periode: 'All', principal: 'All', jenis: 'All' };
+
+// Warna bar Sales Volume (Domestic & International)
+const SV_COLORS = {
+  Visa: { domestic: '#93c5fd', international: '#1e3a8a', line: '#f59e0b' },
+  Mastercard: { domestic: '#fdba74', international: '#c2410c', line: '#0f766e' },
+};
 
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 
@@ -51,13 +62,15 @@ const generateDummyData = () => {
       const groupRand = Math.random();
       let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
 
+      const region = Math.random() > 0.3 ? 'Domestic' : 'International';
+
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
       const baseCost = (Math.random() * 3 + 2) * wave; 
       const principalCost = Number(baseCost.toFixed(3));
       const salesVolume = Number((principalCost * (Math.random() * 1.2 + 1.2)).toFixed(0));
       
-      const incomeRatio = 1 + Math.sin(monthIndex * 1.3) * 0.3 + (Math.random() * 0.4 - 0.1);
+      const incomeRatio = 1.25 + Math.sin(monthIndex * 1.3) * 0.1 + Math.random() * 0.2; // selalu > 1 -> margin positif
       const income = Number((principalCost * incomeRatio).toFixed(3));
 
       const costRateBase = 0.038 + (wave - 1.2) * 0.005;
@@ -68,6 +81,7 @@ const generateDummyData = () => {
         date: dateString, 
         principal: type, 
         group: groupName, 
+        region: region,
         salesVolume: salesVolume, 
         principalCost: principalCost,
         income: income,
@@ -88,7 +102,7 @@ const Dashboard = () => {
   // ==========================================
   // 2. STATE MANAGEMENT 
   // ==========================================
-  const [filters, setFilters] = useState({ periode: 'All', principal: 'All' });
+  const [filters, setFilters] = useState({ ...DEFAULT_FILTERS });
   const [appliedFilters, setAppliedFilters] = useState({ ...filters });
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -110,7 +124,6 @@ const Dashboard = () => {
   };
   const currentPeriodInfo = periodTexts[appliedFilters.periode] || periodTexts['All'];
   const headerDateTxt = currentPeriodInfo.header;
-  const vsMonthTxt = currentPeriodInfo.vs;
 
   // ==========================================
   // 3. LOGIKA FILTERING & AGREGASI (DINAMIS)
@@ -126,7 +139,8 @@ const Dashboard = () => {
     const globalFilteredDB = DUMMY_DB.filter(item => {
       const passPeriode = isAllPeriod || item.date.startsWith(targetPeriod);
       const passPrincipal = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
-      return passPeriode && passPrincipal;
+      const passJenis = appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
+      return passPeriode && passPrincipal && passJenis;
     });
 
     if (globalFilteredDB.length === 0) {
@@ -163,9 +177,11 @@ const Dashboard = () => {
         const displayLabel = isAllPeriod ? monthsShort[d.getMonth()] : `${d.getDate()}`;
 
         if (!chartMap[groupKey]) {
-          chartMap[groupKey] = { name: displayLabel, sortKey: groupKey, salesVolume: 0, income: 0, cost: 0 };
+          chartMap[groupKey] = { name: displayLabel, sortKey: groupKey, salesVolume: 0, salesDomestic: 0, salesInternational: 0, income: 0, cost: 0 };
         }
         chartMap[groupKey].salesVolume += item.salesVolume;
+        if (item.region === 'International') chartMap[groupKey].salesInternational += item.salesVolume;
+        else chartMap[groupKey].salesDomestic += item.salesVolume;
         chartMap[groupKey].income += item.income;
         chartMap[groupKey].cost += item.principalCost;
       });
@@ -175,6 +191,9 @@ const Dashboard = () => {
         .map(d => ({
           name: d.name,
           salesVolume: Number(d.salesVolume.toFixed(0)),
+          salesDomestic: Number(d.salesDomestic.toFixed(0)),
+          salesInternational: Number(d.salesInternational.toFixed(0)),
+          intlShare: d.salesVolume ? Number(((d.salesInternational / d.salesVolume) * 100).toFixed(1)) : 0,
           income: Number(d.income.toFixed(2)),
           cost: Number(d.cost.toFixed(2)),
           margin: Number((d.income - d.cost).toFixed(2)),
@@ -204,27 +223,64 @@ const Dashboard = () => {
   // ==========================================
   const handleApply = () => setAppliedFilters({ ...filters });
   const handleReset = () => {
-    setFilters({ periode: 'All', principal: 'All' });
-    setAppliedFilters({ periode: 'All', principal: 'All' });
+    setFilters({ ...DEFAULT_FILTERS });
+    setAppliedFilters({ ...DEFAULT_FILTERS });
   };
   const handleLogout = () => alert("Logout berhasil!");
   
-  // Tooltip Line Chart (Recharts) dengan Background Transparan Putih
-  const CustomTrendTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const entry = payload[0];
-      return (
-        <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] px-3 py-2 text-[12px] text-slate-700 z-50">
-          <p className="font-bold text-slate-800 mb-1">{label}</p>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
-            <span className="text-slate-600 font-medium">{entry.name}:</span>
-            <span className="font-bold text-slate-800">{formatValue(entry.value)}</span>
-          </div>
+  // Tooltip Income / Cost / Margin
+  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, data }) => {
+    if (!active || !payload || !payload.length) return null;
+    const row = payload[0].payload;
+    const idx = data.indexOf(row);
+    const prevVal = idx > 0 ? data[idx - 1][metricKey] : null;
+    const changePct = prevVal ? ((row[metricKey] - prevVal) / Math.abs(prevVal)) * 100 : null;
+    const isUp = changePct !== null && changePct >= 0;
+    const goodWhenUp = metricKey !== 'cost';
+    const changeColor = isUp === goodWhenUp ? 'text-emerald-500' : 'text-rose-500';
+    return (
+      <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] px-3 py-2 text-[12px] text-slate-700 z-50">
+        <p className="font-bold text-slate-800 mb-1">{label}</p>
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].color }}></div>
+          <span className="text-slate-600 font-medium">{metricLabel}:</span>
+          <span className="font-bold text-slate-800">{formatValue(row[metricKey])}</span>
         </div>
-      );
-    }
-    return null;
+        {changePct !== null && (
+          <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-3">
+            <span className="text-slate-500 font-medium">vs sebelumnya</span>
+            <span className={`font-bold ${changeColor}`}>{isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Tooltip Sales Volume: Domestic, International, dan porsi International (%)
+  const SalesVolumeTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || !payload.length) return null;
+    const row = payload[0].payload;
+    const items = [
+      { name: 'Domestic', value: formatValue(row.salesDomestic), color: payload.find(p => p.dataKey === 'salesDomestic')?.color },
+      { name: 'International', value: formatValue(row.salesInternational), color: payload.find(p => p.dataKey === 'salesInternational')?.color },
+      { name: 'Int\'l Share', value: `${row.intlShare}%`, color: payload.find(p => p.dataKey === 'intlShare')?.color },
+    ];
+    return (
+      <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] px-3 py-2 text-[12px] text-slate-700 z-50">
+        <p className="font-bold text-slate-800 mb-1">{label}</p>
+        {items.map(it => (
+          <div key={it.name} className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: it.color }}></div>
+            <span className="text-slate-600 font-medium">{it.name}:</span>
+            <span className="font-bold text-slate-800">{it.value}</span>
+          </div>
+        ))}
+        <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-3">
+          <span className="text-slate-500 font-medium">Total</span>
+          <span className="font-bold text-slate-800">{formatValue(row.salesVolume)}</span>
+        </div>
+      </div>
+    );
   };
 
 
@@ -244,6 +300,7 @@ const Dashboard = () => {
           <nav className="flex flex-col gap-8 items-center">
             <button className="text-blue-600 transition-colors" title="Dashboard"><CreditCard size={24} strokeWidth={1.5} /></button>
             <button onClick={() => navigate('/detail-cost')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Cost"><Book size={24} strokeWidth={1.5} /></button>
+            <button onClick={() => navigate('/detail-billing')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Billing"><FileText size={24} strokeWidth={1.5} /></button>
           </nav>
         </div>
         <div className="flex flex-col gap-4 relative">
@@ -279,79 +336,6 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* SUMMARY CARDS (5 GRID) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3 xl:gap-4 mb-6">
-            {[
-              { label: 'Sales Volume', icon: BarChart2 },
-              { label: 'Cost', icon: CreditCard },
-              { label: 'Cost To Volume', icon: Clock },
-              { label: 'Income', icon: BarChart2 },
-              { label: 'Income To Volume', icon: BarChart2 }
-            ].map((card, idx) => {
-              
-              const getDynamicStats = (groupName) => {
-                const groupData = dashboardData.groupStats.find(g => g.name === groupName);
-                const baseVal = groupData ? groupData.totalSort : 0;
-                if (baseVal === 0) return { amount: '0', pct: '0%', isUp: true };
-                let amountStr = '';
-                if (card.label === 'Sales Volume') amountStr = ((baseVal % 5000) / 800 + 2.5).toFixed(2) + ' T';
-                else if (card.label === 'Cost') amountStr = ((baseVal % 3000) / 500 + 0.5).toFixed(2) + ' B';
-                else if (card.label === 'Cost To Volume') amountStr = ((baseVal % 2) / 10 + 0.01).toFixed(2);
-                else if (card.label === 'Income') amountStr = ((baseVal % 2500) / 400 + 0.8).toFixed(2) + ' B';
-                else if (card.label === 'Income To Volume') amountStr = ((baseVal % 2) / 10 + 0.03).toFixed(2); 
-        
-                const pctNum = (baseVal % 2.5 + 0.1).toFixed(1);
-                const pct = `${pctNum}%`;
-                const isUp = (Math.round(baseVal * 100) % 2 === 0);
-                return { amount: amountStr, pct, isUp };
-              };
-
-              const statsGrid = [
-                { label: 'Credit', ...getDynamicStats('Credit Card') },
-                { label: 'Debit', ...getDynamicStats('Debit Card') },
-                { label: 'Acquiring', ...getDynamicStats('Acquiring') }
-              ];
-
-              const isReverseTrend = card.label === 'Cost' || card.label === 'Cost To Volume';
-              const colorUp = isReverseTrend ? 'text-rose-500' : 'text-emerald-500';
-              const colorDown = isReverseTrend ? 'text-emerald-500' : 'text-rose-500';
-
-              return (
-                <div key={idx} className="bg-white p-4 xl:p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden flex flex-col justify-between">
-                  <div className="absolute top-0 left-0 w-full h-[3px] bg-amber-400 rounded-t-2xl"></div>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-[10px] xl:text-[11px] font-bold text-slate-500 uppercase tracking-wider">{card.label}</p>
-                    </div>
-                    <div className="w-8 h-8 xl:w-10 xl:h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                      <card.icon size={16} strokeWidth={1.5} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-slate-100">
-                    {statsGrid.map((stat, i) => (
-                      <div key={i} className="flex flex-col items-center">
-                        <span className="text-[8px] xl:text-[9px] text-slate-500 font-semibold text-center leading-tight mb-1">{stat.label}</span>
-                        <div className="bg-slate-50/70 py-1.5 px-1 rounded-lg border border-slate-100 w-full text-center">
-                          <span className="text-[11px] xl:text-[13px] font-bold text-slate-800">{stat.amount}</span>
-                        </div>
-                        <div className="flex flex-col items-center justify-center mt-1">
-                          <div className="flex items-center gap-0.5">
-                            <span className={`text-[8px] ${stat.isUp ? colorUp : colorDown}`}>{stat.isUp ? '▲' : '▼'}</span>
-                            <span className={`text-[9px] font-bold ${stat.isUp ? colorUp : colorDown}`}>{stat.pct}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="text-center mt-3 pt-2 border-t border-slate-50 border-dashed">
-                    <span className="text-[10px] font-medium text-slate-400">vs {vsMonthTxt}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          
-
           {/* FILTER UTAMA (KIRI TEKS, KANAN FILTER) */}
           <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6 pt-2">
             <div className="text-[13px] font-bold text-slate-500 whitespace-nowrap order-2 xl:order-1 flex items-center gap-2">
@@ -379,6 +363,17 @@ const Dashboard = () => {
                 </div>
               </div>
 
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Jenis</label>
+                <div className="relative">
+                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.jenis} onChange={(e) => setFilters({...filters, jenis: e.target.value})}>
+                    <option value="All" disabled hidden>Pilih Jenis</option>
+                    {JENIS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
               <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">Apply</button>
               <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">Reset</button>
             </div>
@@ -399,6 +394,20 @@ const Dashboard = () => {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                     {METRIC_LIST.map(metric => {
+                      // Bar maksimal ~50% tinggi chart, line di pita atas (55%-95%) supaya tidak bersentuhan
+                      const isSV = metric.key === 'salesVolume';
+                      const lineKey = isSV ? 'intlShare' : metric.key;
+                      const barVals = data.map(d => d[metric.key]);
+                      const barMax = Math.max(1, ...barVals);
+                      const barMin = 0;
+                      const barDomain = [barMin, barMin + (barMax - barMin) * 2];
+                      const lineVals = data.map(d => d[lineKey]);
+                      const lineLo = lineVals.length ? Math.min(...lineVals) : 0;
+                      const lineHi = lineVals.length ? Math.max(...lineVals) : 100;
+                      const lineSpan = Math.max(lineHi - lineLo, 1) / 0.4;
+                      const pctDomainMin = lineLo - 0.55 * lineSpan;
+                      const pctDomain = [pctDomainMin, pctDomainMin + lineSpan];
+                      const ratioColor = SV_COLORS[principalName].line;
                       const last = data[data.length - 1];
                       const prev = data[data.length - 2];
                       const lastVal = last ? last[metric.key] : 0;
@@ -425,13 +434,29 @@ const Dashboard = () => {
                           </div>
                           <div className="flex-1 w-full mt-3">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={['auto', 'auto']} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
-                                <RechartsTooltip content={<CustomTrendTooltip />} />
-                                <Line type="linear" dataKey={metric.key} name={metric.label} stroke={lineColor} strokeWidth={2.5} dot={{ r: data.length > 15 ? 2 : 4, fill: lineColor, strokeWidth: 0 }} activeDot={{ r: 5 }} />
-                              </LineChart>
+                              {metric.key === 'salesVolume' ? (
+                                <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
+                                  <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={barDomain} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
+                                  <YAxis yAxisId="pct" orientation="right" hide domain={pctDomain} allowDataOverflow />
+                                  <RechartsTooltip content={<SalesVolumeTooltip />} cursor={{ fill: '#f8fafc' }} />
+                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                  <Bar yAxisId="vol" dataKey="salesDomestic" name="Domestic" stackId="sv" fill={SV_COLORS[principalName].domestic} />
+                                  <Bar yAxisId="vol" dataKey="salesInternational" name="International" stackId="sv" fill={SV_COLORS[principalName].international} radius={[3, 3, 0, 0]} />
+                                  <Line yAxisId="pct" type="linear" dataKey="intlShare" name="Int'l %" stroke={SV_COLORS[principalName].line} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: SV_COLORS[principalName].line, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                                </ComposedChart>
+                              ) : (
+                                <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
+                                  <YAxis yAxisId="val" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={barDomain} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
+                                  <YAxis yAxisId="pct" orientation="right" hide domain={pctDomain} allowDataOverflow />
+                                  <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} data={data} />} cursor={{ fill: '#f8fafc' }} />
+                                  <Bar yAxisId="val" dataKey={metric.key} name={metric.label} fill={lineColor} radius={[3, 3, 0, 0]} />
+                                  <Line yAxisId="pct" type="linear" dataKey={metric.key} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                                </ComposedChart>
+                              )}
                             </ResponsiveContainer>
                           </div>
                         </div>

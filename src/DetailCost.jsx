@@ -13,7 +13,7 @@ import {
 import LogoDanantara from './mandiri.png';
 import LogoMandiri from './danatara.png';
 
-import { BILLING_HIGHLIGHTS, BILLING_SUMMARY, TOP_BILLING_LIMIT } from './billingData';
+import { BILLING_HIGHLIGHTS, BILLING_SUMMARY, SUMMARY_STATUSES, TOP_BILLING_LIMIT } from './billingData';
 
 // ==========================================
 // 1. GENERATE DUMMY DATA UNTUK GRAFIK
@@ -221,52 +221,45 @@ const BillingListCard = ({ title, subtitle, items, accent, emptyText, onOpen }) 
 // ==========================================
 const NEW_COLOR = '#10b981';
 const BillingSummaryCard = ({ principal, summary }) => {
-  const { total, newCount, repricing, amount } = summary;
-  const pct = (n) => (total ? (n / total) * 100 : 0);
-  const repricingColor = PRINCIPAL_COLOR[principal];
-  const parts = [
-    { label: 'New', value: newCount, color: NEW_COLOR },
-    { label: 'Repricing', value: repricing, color: repricingColor },
-  ];
+  const total = summary.total;
+  const pct = (n) => (total.count ? (n / total.count) * 100 : 0);
+  const accent = PRINCIPAL_COLOR[principal];
+  const STATUS_COLOR = { New: NEW_COLOR, Repricing: accent, Existing: '#94a3b8' };
+  const parts = SUMMARY_STATUSES.map(st => ({ label: st, ...summary[st], color: STATUS_COLOR[st] }));
+  const rp = (v) => `Rp ${formatCurrency(v)}`;
   return (
     <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden h-full flex flex-col justify-center">
-      <div className="absolute top-0 left-0 w-full h-[3px]" style={{ backgroundColor: repricingColor }}></div>
+      <div className="absolute top-0 left-0 w-full h-[3px]" style={{ backgroundColor: accent }}></div>
       <p className="text-[13px] font-bold text-slate-700 text-center mb-4 pb-3 border-b border-slate-100">Summary</p>
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
         {/* Total Item */}
         <div className="shrink-0 sm:pr-6 sm:border-r border-slate-100">
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Item</p>
-          <p className="text-[30px] font-bold text-[#0f172a] leading-none mt-1.5">{total.toLocaleString('id-ID')}</p>
-          <p className="text-[10px] text-slate-400 mt-1">billing {principal}</p>
+          <p className="text-[30px] font-bold text-[#0f172a] leading-none mt-1.5">{total.count.toLocaleString('id-ID')}</p>
+          <p className="text-[12px] font-semibold text-slate-500 mt-1" title={`Eqv IDR ${total.amount.toLocaleString('id-ID')}`}>({rp(total.amount)})</p>
         </div>
 
-        {/* Komposisi New vs Repricing */}
+        {/* Komposisi New / Repricing / Existing */}
         <div className="flex-1 min-w-0">
           <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-slate-100">
-            {parts.map(p => p.value > 0 && (
-              <div key={p.label} style={{ width: `${pct(p.value)}%`, backgroundColor: p.color }} title={`${p.label}: ${p.value}`}></div>
+            {parts.map(p => p.count > 0 && (
+              <div key={p.label} style={{ width: `${pct(p.count)}%`, backgroundColor: p.color }} title={`${p.label}: ${p.count}`}></div>
             ))}
           </div>
           <div className="grid grid-cols-3 gap-3 mt-3">
             {parts.map(p => (
-              <div key={p.label} className="flex items-start gap-2">
+              <div key={p.label} className="flex items-start gap-2 min-w-0">
                 <span className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: p.color }}></span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[11px] font-semibold text-slate-500">{p.label}</p>
                   <p className="text-[18px] font-bold text-slate-800 leading-tight">
-                    {p.value.toLocaleString('id-ID')}
-                    <span className="text-[11px] font-semibold text-slate-400 ml-1.5">{pct(p.value).toFixed(0)}%</span>
+                    {p.count.toLocaleString('id-ID')}
+                    <span className="text-[11px] font-semibold text-slate-400 ml-1.5">{pct(p.count).toFixed(0)}%</span>
                   </p>
+                  <p className="text-[11px] font-semibold text-slate-500 truncate" title={`Eqv IDR ${p.amount.toLocaleString('id-ID')}`}>({rp(p.amount)})</p>
                 </div>
               </div>
             ))}
-            <div className="flex items-start gap-2 pl-3 border-l border-slate-100">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-slate-500">Amount</p>
-                <p className="text-[18px] font-bold text-slate-800 leading-tight truncate" title={`Eqv IDR ${amount.toLocaleString('id-ID')}`}>{formatCurrency(amount)}</p>
-                <p className="text-[10px] text-slate-400">Eqv IDR</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>

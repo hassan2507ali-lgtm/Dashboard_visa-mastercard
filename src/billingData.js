@@ -169,14 +169,25 @@ export const formatDecimal = (num) => {
 };
 
 // ==========================================
-// SUMMARY PER PRINCIPAL: Total Item, New, Repricing
-// Item = baris billing; New = baris dari New Billing; Repricing = sisanya (billing lama)
+// SUMMARY PER PRINCIPAL: Total Item, New, Repricing, Existing (jumlah item + amount Eqv IDR)
+// New       = baris dari billing line baru (New Billing)
+// Repricing = billing lama yang tarifnya berubah
+// Existing  = billing lama dengan tarif tetap
+// (Dummy: status Repricing / Existing diacak ~75% / 25%, nanti diganti data asli)
 // ==========================================
+const getBillingStatus = (row) => {
+  if (BILLING_KEYS['New Billing'].has(billingKey(row.principal, row.billingLine, row.description))) return 'New';
+  return Math.random() < 0.75 ? 'Repricing' : 'Existing';
+};
+TABLE_DB.forEach(row => { row.billingStatus = getBillingStatus(row); });
+
+export const SUMMARY_STATUSES = ['New', 'Repricing', 'Existing'];
+
 export const BILLING_SUMMARY = Object.fromEntries(
   Object.keys(BILLING_HIGHLIGHTS).map(principal => {
     const rows = TABLE_DB.filter(r => r.principal === principal);
-    const newCount = rows.filter(r => BILLING_KEYS['New Billing'].has(billingKey(r.principal, r.billingLine, r.description))).length;
-    const amount = rows.reduce((sum, r) => sum + r.eqvIdr, 0); // total Eqv IDR
-    return [principal, { total: rows.length, newCount, repricing: rows.length - newCount, amount }];
+    const sumOf = (list) => ({ count: list.length, amount: list.reduce((sum, r) => sum + r.eqvIdr, 0) });
+    const byStatus = Object.fromEntries(SUMMARY_STATUSES.map(st => [st, sumOf(rows.filter(r => r.billingStatus === st))]));
+    return [principal, { total: sumOf(rows), ...byStatus }];
   })
 );

@@ -106,6 +106,41 @@ const VIEW_OPTIONS = {
 // KOMPONEN CHART 1 GARIS (gaya Dashboard) untuk Service Fee & Interchange Fee
 // Nilai garis mengikuti filter Category: Income -> Income, selain itu -> Cost
 // ==========================================
+// Jumlah interval sumbu Y (5 tick: 0..4)
+const AXIS_INTERVALS = 4;
+
+// Bulatkan step ke angka "cantik" (1, 2, 2.5, 5 x 10^n), dibulatkan ke atas
+const niceStep = (raw) => {
+  if (!(raw > 0)) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  const frac = raw / pow;
+  const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 2.5 ? 2.5 : frac <= 5 ? 5 : 10;
+  return nice * pow;
+};
+
+// Sumbu % kanan: cari step terkecil yang membuat garis berada di ~45% atas chart
+// (di atas bar) tanpa tick negatif; kalau tidak bisa, mulai dari 0%.
+const PCT_STEPS = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2];
+const buildPctAxis = (lo, hi) => {
+  for (const step of PCT_STEPS) {
+    let top = Math.ceil(hi / step - 1e-9) * step;
+    if (top - hi < step * 0.2) top += step; // ruang untuk label/titik paling atas
+    const bottom = top - AXIS_INTERVALS * step;
+    if (bottom >= 0 && lo - bottom >= 0.55 * AXIS_INTERVALS * step) return { lo: bottom, step };
+  }
+  return { lo: 0, step: niceStep((hi * 1.15) / AXIS_INTERVALS) };
+};
+
+// Label sumbu amount: ringkas, tanpa desimal berlebih (mis. 0, 250 Jt, 1,5 M)
+const formatAxisAmount = (v) => {
+  if (v === 0) return '0';
+  const fmt = (n) => n.toLocaleString('id-ID', { maximumFractionDigits: 1 });
+  if (v >= 1e9) return `${fmt(v / 1e9)} bn`;
+  if (v >= 1e6) return `${fmt(v / 1e6)} M`;
+  if (v >= 1e3) return `${fmt(v / 1e3)} Rb`;
+  return fmt(v);
+};
+
 // Warna line % (dibedakan dari warna bar)
 const RATIO_LINE_COLOR = { Visa: '#f59e0b', Mastercard: '#0f766e' };
 
@@ -170,16 +205,20 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
   // Cost naik = buruk (merah), Income naik = baik (hijau)
   const trendColor = diffPct === null ? 'text-slate-400' : (isUp === (metricKey === 'income') ? 'text-emerald-500' : 'text-rose-500');
 
-  // Bar maks ~50% tinggi chart, line % di pita atas supaya tidak bersentuhan (sama seperti Dashboard)
+  // Sumbu Y kiri (amount) & kanan (%) masing-masing 5 tick bulat, sejajar dengan grid.
+  // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
   const barMax = Math.max(1, ...data.map(d => d.value));
+  const amtStep = niceStep(barMax / (AXIS_INTERVALS * 0.5));
+  const amtTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => i * amtStep);
+
   const ratios = data.map(d => d.costRatio);
   const ratioLo = ratios.length ? Math.min(...ratios) : 0;
   const ratioHi = ratios.length ? Math.max(...ratios) : 3;
-  const ratioSpan = Math.max(ratioHi - ratioLo, 0.1) / 0.4;
-  const ratioDomainMin = ratioLo - 0.55 * ratioSpan;
+  const { lo: pctLo, step: pctStep } = buildPctAxis(ratioLo, ratioHi);
+  const pctTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => +(pctLo + i * pctStep).toFixed(2));
 
   return (
-    <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[260px] flex flex-col">
+    <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[300px] flex flex-col">
       <div className="flex justify-between items-start">
         <div>
           <p className="text-[13px] font-bold text-slate-700">{title}</p>
@@ -200,11 +239,11 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-              <YAxis yAxisId="amt" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={55} domain={[0, barMax * 2]} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={formatCurrency} />
-              <YAxis yAxisId="pct" orientation="right" hide domain={[ratioDomainMin, ratioDomainMin + ratioSpan]} allowDataOverflow />
+              <YAxis yAxisId="amt" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={52} tickMargin={8} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} interval={0} allowDataOverflow tickFormatter={formatAxisAmount} />
+              <YAxis yAxisId="pct" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} tickMargin={8} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} interval={0} allowDataOverflow tickFormatter={(v) => `${v.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%`} />
               <Tooltip content={<SimpleTooltip metricLabel={metricLabel} />} cursor={{ fill: '#f8fafc' }} />
               <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
               <Line yAxisId="pct" type="linear" dataKey="costRatio" name="Cost / SV" stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />

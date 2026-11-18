@@ -12,6 +12,7 @@ import {
   Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend
 } from 'recharts';
+import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase } from './chartAxis';
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
@@ -43,6 +44,8 @@ const SV_COLORS = {
   Mastercard: { domestic: '#fdba74', international: '#c2410c', line: '#0f766e' },
 };
 
+// Label sumbu amount: ringkas (mis. 0, 2,5, 1,2 rb, 3 jt)
+const formatAxisCompact = (v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 2 });
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 
 // ==========================================
@@ -435,20 +438,19 @@ const Dashboard = () => {
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                     {METRIC_LIST.map(metric => {
-                      // Bar maksimal ~50% tinggi chart, line di pita atas (55%-95%) supaya tidak bersentuhan
+                      // Sumbu Y kiri (amount) & kanan (%) masing-masing 5 tick bulat, sejajar dengan grid.
+                      // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
                       const isSV = metric.key === 'salesVolume';
                       const lineKey = isSV ? 'intlShare' : metric.ratioKey;
-                      const barVals = data.map(d => d[metric.key]);
-                      const barMax = Math.max(1, ...barVals);
-                      const barMin = 0;
-                      const barDomain = [barMin, barMin + (barMax - barMin) * 2];
+                      const barMax = Math.max(0, ...data.map(d => d[metric.key]));
+                      const amtTicks = buildAmountTicks(barMax || 1);
                       const lineVals = data.map(d => d[lineKey]);
                       const lineLo = lineVals.length ? Math.min(...lineVals) : 0;
                       const lineHi = lineVals.length ? Math.max(...lineVals) : 100;
-                      const lineSpan = Math.max(lineHi - lineLo, 1) / 0.4;
-                      const pctDomainMin = lineLo - 0.55 * lineSpan;
-                      const pctDomain = [pctDomainMin, pctDomainMin + lineSpan];
+                      const pctTicks = buildPctTicks(lineLo, lineHi);
                       const ratioColor = SV_COLORS[principalName].line;
+                      const leftAxisProps = { ...yAxisBase, tick: { fontSize: 10, fill: '#64748b' }, width: 46, domain: [0, amtTicks[AXIS_INTERVALS]], ticks: amtTicks, tickFormatter: formatAxisCompact };
+                      const rightAxisProps = { ...yAxisBase, orientation: 'right', tick: { fontSize: 10, fill: ratioColor, fontWeight: 600 }, width: 44, domain: [pctTicks[0], pctTicks[AXIS_INTERVALS]], ticks: pctTicks, tickFormatter: formatPctTick };
                       const last = data[data.length - 1];
                       const prev = data[data.length - 2];
                       const lastVal = last ? last[metric.key] : 0;
@@ -459,7 +461,7 @@ const Dashboard = () => {
                       const trendColor = diffPct === null ? 'text-slate-400' : (isUp === goodWhenUp ? 'text-emerald-500' : 'text-rose-500');
 
                       return (
-                        <div key={metric.key} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[260px]">
+                        <div key={metric.key} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[300px]">
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="text-[13px] font-bold text-slate-700">{metric.label}</p>
@@ -476,11 +478,11 @@ const Dashboard = () => {
                           <div className="flex-1 w-full mt-3">
                             <ResponsiveContainer width="100%" height="100%">
                               {metric.key === 'salesVolume' ? (
-                                <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
-                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-                                  <YAxis yAxisId="vol" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={barDomain} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
-                                  <YAxis yAxisId="pct" orientation="right" hide domain={pctDomain} allowDataOverflow />
+                                  <YAxis yAxisId="vol" {...leftAxisProps} />
+                                  <YAxis yAxisId="pct" {...rightAxisProps} />
                                   <RechartsTooltip content={<SalesVolumeTooltip />} cursor={{ fill: '#f8fafc' }} />
                                   <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
                                   <Bar yAxisId="vol" dataKey="salesDomestic" name="Domestic" stackId="sv" fill={SV_COLORS[principalName].domestic} />
@@ -488,11 +490,11 @@ const Dashboard = () => {
                                   <Line yAxisId="pct" type="linear" dataKey="intlShare" name="Int'l %" stroke={SV_COLORS[principalName].line} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: SV_COLORS[principalName].line, strokeWidth: 0 }} activeDot={{ r: 4 }} />
                                 </ComposedChart>
                               ) : (
-                                <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: -15 }}>
-                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-                                  <YAxis yAxisId="val" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={45} domain={barDomain} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={(v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 1 })} />
-                                  <YAxis yAxisId="pct" orientation="right" hide domain={pctDomain} allowDataOverflow />
+                                  <YAxis yAxisId="val" {...leftAxisProps} />
+                                  <YAxis yAxisId="pct" {...rightAxisProps} />
                                   <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} ratioKey={metric.ratioKey} ratioLabel={metric.ratioLabel} ratioColor={ratioColor} data={data} />} cursor={{ fill: '#f8fafc' }} />
                                   <Bar yAxisId="val" dataKey={metric.key} name={metric.label} fill={lineColor} radius={[3, 3, 0, 0]} />
                                   <Line yAxisId="pct" type="linear" dataKey={metric.ratioKey} name={metric.ratioLabel} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} />

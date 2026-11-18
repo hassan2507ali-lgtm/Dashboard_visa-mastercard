@@ -31,7 +31,11 @@ const METRIC_LIST = [
 // Filter jenis transaksi -> mapping ke field `group` di data
 const JENIS_OPTIONS = ['Debit', 'Credit', 'Acquiring'];
 const JENIS_TO_GROUP = { Debit: 'Debit Card', Credit: 'Credit Card', Acquiring: 'Acquiring' };
-const DEFAULT_FILTERS = { periode: 'All', principal: 'All', jenis: 'All' };
+const DEFAULT_FILTERS = { periode: 'All', principal: 'All', jenis: 'All', region: 'All', channel: 'All' };
+
+// Filter Domestic / International & CP (Card Present) / CNP (Card Not Present)
+const REGION_OPTIONS = ['Domestic', 'International'];
+const CHANNEL_OPTIONS = ['CP', 'CNP'];
 
 // Warna bar Sales Volume (Domestic & International)
 const SV_COLORS = {
@@ -63,12 +67,14 @@ const generateDummyData = () => {
       let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
 
       const region = Math.random() > 0.3 ? 'Domestic' : 'International';
+      const channel = Math.random() > 0.45 ? 'CP' : 'CNP';
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
       const baseCost = (Math.random() * 3 + 2) * wave; 
       const principalCost = Number(baseCost.toFixed(3));
-      const salesVolume = Number((principalCost * (Math.random() * 1.2 + 1.2)).toFixed(0));
+      // SV dibuat jauh lebih besar dari cost -> Cost/SV ±1,1-1,8%, Income/SV maks ±2,8% (semua rasio < 3%)
+      const salesVolume = Number((principalCost * (55 + Math.random() * 35)).toFixed(0));
       
       const incomeRatio = 1.25 + Math.sin(monthIndex * 1.3) * 0.1 + Math.random() * 0.2; // selalu > 1 -> margin positif
       const income = Number((principalCost * incomeRatio).toFixed(3));
@@ -82,6 +88,7 @@ const generateDummyData = () => {
         principal: type, 
         group: groupName, 
         region: region,
+        channel: channel,
         salesVolume: salesVolume, 
         principalCost: principalCost,
         income: income,
@@ -140,7 +147,9 @@ const Dashboard = () => {
       const passPeriode = isAllPeriod || item.date.startsWith(targetPeriod);
       const passPrincipal = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
       const passJenis = appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
-      return passPeriode && passPrincipal && passJenis;
+      const passRegion = appliedFilters.region === 'All' || item.region === appliedFilters.region;
+      const passChannel = appliedFilters.channel === 'All' || item.channel === appliedFilters.channel;
+      return passPeriode && passPrincipal && passJenis && passRegion && passChannel;
     });
 
     if (globalFilteredDB.length === 0) {
@@ -198,9 +207,10 @@ const Dashboard = () => {
           cost: Number(d.cost.toFixed(2)),
           margin: Number((d.income - d.cost).toFixed(2)),
           // Rasio terhadap Sales Volume (%) -> dipakai line chart Income / Cost / Margin
-          incomeRatio: d.salesVolume ? Number(((d.income / d.salesVolume) * 100).toFixed(2)) : 0,
-          costRatio: d.salesVolume ? Number(((d.cost / d.salesVolume) * 100).toFixed(2)) : 0,
-          marginRatio: d.salesVolume ? Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)) : 0,
+          // Rasio dibatasi maks 3%
+          incomeRatio: d.salesVolume ? Math.min(Number(((d.income / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+          costRatio: d.salesVolume ? Math.min(Number(((d.cost / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+          marginRatio: d.salesVolume ? Math.min(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)), 3) : 0,
         }));
     };
 
@@ -378,6 +388,28 @@ const Dashboard = () => {
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.jenis} onChange={(e) => setFilters({...filters, jenis: e.target.value})}>
                     <option value="All" disabled hidden>Pilih Jenis</option>
                     {JENIS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Domestic / International</label>
+                <div className="relative">
+                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.region} onChange={(e) => setFilters({...filters, region: e.target.value})}>
+                    <option value="All">Both</option>
+                    {REGION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">CP / CNP</label>
+                <div className="relative">
+                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.channel} onChange={(e) => setFilters({...filters, channel: e.target.value})}>
+                    <option value="All">All</option>
+                    {CHANNEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>

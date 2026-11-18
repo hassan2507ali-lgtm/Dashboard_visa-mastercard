@@ -5,7 +5,7 @@ import {
   User, ChevronUp, ChevronDown, LogOut, X
 } from 'lucide-react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, 
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer 
 } from 'recharts';
 
@@ -36,6 +36,8 @@ const generateChartData = (scale = 1) => {
     // Dummy: Income & Cost dalam Rupiah
     const incomeRaw = Math.floor((Math.random() * 40000000 + 20000000) * scale);
     const costRaw = Math.floor((Math.random() * 25000000 + 5000000) * scale);
+    // Sales Volume: diatur supaya Cost / SV selalu 1,2% - 2,8% (maks 3%)
+    const salesVolume = Math.floor(costRaw / (0.012 + Math.random() * 0.016));
 
     // Billing Line: target bulanan dibagi rata ke hari-hari di bulan tsb,
     // sehingga total sebulan = target (mis. 33, 100, 187)
@@ -56,6 +58,7 @@ const generateChartData = (scale = 1) => {
       monthKey,
       income: incomeRaw,
       cost: costRaw,
+      salesVolume,
       billingIncome: billingIncomeCount, // jumlah billing yang termasuk Income
       billingCost: billingCostCount      // jumlah billing yang termasuk Cost
     });
@@ -103,25 +106,38 @@ const VIEW_OPTIONS = {
 // KOMPONEN CHART 1 GARIS (gaya Dashboard) untuk Service Fee & Interchange Fee
 // Nilai garis mengikuti filter Category: Income -> Income, selain itu -> Cost
 // ==========================================
-const SimpleTooltip = ({ active, payload, label }) => {
+// Warna line % (dibedakan dari warna bar)
+const RATIO_LINE_COLOR = { Visa: '#f59e0b', Mastercard: '#0f766e' };
+
+// Pop up: bar = amount, line = % (Cost / SV)
+const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
   if (!active || !payload || payload.length === 0) return null;
-  const entry = payload[0];
+  const row = payload[0].payload;
+  const barColor = payload.find(p => p.dataKey === 'value')?.color;
+  const lineColor = payload.find(p => p.dataKey === 'costRatio')?.color;
   return (
     <div className="bg-white/95 border border-slate-200 rounded-xl shadow-md px-3 py-2 text-[12px]">
       <p className="font-bold text-slate-800 mb-1">{label}</p>
       <div className="flex items-center gap-2">
-        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }}></div>
-        <span className="text-slate-600 font-medium">{entry.name}:</span>
-        <span className="font-bold text-slate-800">{formatCurrency(entry.value)}</span>
+        <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: barColor }}></div>
+        <span className="text-slate-600 font-medium">Amount {metricLabel}:</span>
+        <span className="font-bold text-slate-800">Rp {formatCurrency(row.value)}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lineColor }}></div>
+        <span className="text-slate-600 font-medium">Cost / SV:</span>
+        <span className="font-bold text-slate-800">{row.costRatio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
       </div>
     </div>
   );
 };
 
+// Grid Service Fee / Interchange Fee: bar = amount, line = % (Cost / SV)
 const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
   const metricKey = chartFilters.view === 'Income' ? 'income' : 'cost';
   const metricLabel = metricKey === 'income' ? 'Income' : 'Cost';
-  const lineColor = PRINCIPAL_COLOR[principal];
+  const barColor = PRINCIPAL_COLOR[principal];
+  const ratioColor = RATIO_LINE_COLOR[principal];
 
   const data = useMemo(() => {
     const { startDate, endDate } = chartFilters;
@@ -131,11 +147,19 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       if ((start && item.dateString < start) || (end && item.dateString > end)) return;
       const key = item.monthKey;
       if (!aggMap[key]) {
-        aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }), value: 0 };
+        aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }), value: 0, cost: 0, salesVolume: 0 };
       }
       aggMap[key].value += item[metricKey];
+      aggMap[key].cost += item.cost;
+      aggMap[key].salesVolume += item.salesVolume;
     });
-    return Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    return Object.values(aggMap)
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .map(d => ({
+        ...d,
+        // % Cost terhadap Sales Volume, dibatasi maks 3%
+        costRatio: d.salesVolume ? Math.min(Number(((d.cost / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+      }));
   }, [chartFilters, principal, sources, metricKey]);
 
   const last = data[data.length - 1];
@@ -145,6 +169,14 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
   const isUp = diffPct !== null && diffPct >= 0;
   // Cost naik = buruk (merah), Income naik = baik (hijau)
   const trendColor = diffPct === null ? 'text-slate-400' : (isUp === (metricKey === 'income') ? 'text-emerald-500' : 'text-rose-500');
+
+  // Bar maks ~50% tinggi chart, line % di pita atas supaya tidak bersentuhan (sama seperti Dashboard)
+  const barMax = Math.max(1, ...data.map(d => d.value));
+  const ratios = data.map(d => d.costRatio);
+  const ratioLo = ratios.length ? Math.min(...ratios) : 0;
+  const ratioHi = ratios.length ? Math.max(...ratios) : 3;
+  const ratioSpan = Math.max(ratioHi - ratioLo, 0.1) / 0.4;
+  const ratioDomainMin = ratioLo - 0.55 * ratioSpan;
 
   return (
     <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[260px] flex flex-col">
@@ -168,13 +200,15 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+            <ComposedChart data={data} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={55} domain={['auto', 'auto']} tickFormatter={formatCurrency} />
-              <Tooltip content={<SimpleTooltip />} />
-              <Line type="linear" dataKey="value" name={metricLabel} stroke={lineColor} strokeWidth={2.5} dot={{ r: data.length > 15 ? 2 : 4, fill: lineColor, strokeWidth: 0 }} activeDot={{ r: 5 }} isAnimationActive={false} />
-            </LineChart>
+              <YAxis yAxisId="amt" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} width={55} domain={[0, barMax * 2]} allowDataOverflow ticks={[0, barMax / 2, barMax]} tickFormatter={formatCurrency} />
+              <YAxis yAxisId="pct" orientation="right" hide domain={[ratioDomainMin, ratioDomainMin + ratioSpan]} allowDataOverflow />
+              <Tooltip content={<SimpleTooltip metricLabel={metricLabel} />} cursor={{ fill: '#f8fafc' }} />
+              <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Line yAxisId="pct" type="linear" dataKey="costRatio" name="Cost / SV" stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>

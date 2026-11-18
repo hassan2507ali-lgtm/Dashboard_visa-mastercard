@@ -93,7 +93,12 @@ const assignRegion = (row) => {
   if (row.tagging === 'Interchange International') return 'International';
   return Math.random() > 0.4 ? 'Domestic' : 'International';
 };
-export const TABLE_DB = generateTableData().map(row => ({ ...row, region: assignRegion(row) }));
+// Channel per baris: CP (Card Present) / CNP (Card Not Present) / ATM, acak
+const assignChannel = () => {
+  const r = Math.random();
+  return r > 0.5 ? 'CP' : (r > 0.2 ? 'CNP' : 'ATM');
+};
+export const TABLE_DB = generateTableData().map(row => ({ ...row, region: assignRegion(row), channel: assignChannel() }));
 
 // ==========================================
 // RINGKASAN DETAIL BILLING: TOP BILLING & NEW BILLING PER PRINCIPAL
@@ -132,6 +137,7 @@ export const FILTER_OPTIONS = {
   principal: ['Visa', 'Mastercard'],
   group: ['Acquiring', 'Credit', 'Debit'],
   region: ['Domestic', 'International'],
+  channel: ['CP', 'CNP', 'ATM'],
   billing: ['Top Billing', 'New Billing'],
   month: ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026']
 };

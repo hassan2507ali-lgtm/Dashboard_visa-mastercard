@@ -25,6 +25,7 @@ const TABLE_FILTER_FIELDS = [
   { key: 'principal', label: 'Principal', allLabel: 'All', options: FILTER_OPTIONS.principal },
   { key: 'group', label: 'Group', allLabel: 'All', options: FILTER_OPTIONS.group },
   { key: 'region', label: 'Domestic / International', allLabel: 'Both', options: FILTER_OPTIONS.region },
+  { key: 'channel', label: 'CP / CNP / ATM', allLabel: 'All', options: FILTER_OPTIONS.channel },
   { key: 'billing', label: 'Top / New Billing', allLabel: 'All', options: FILTER_OPTIONS.billing },
 ];
 
@@ -34,6 +35,7 @@ const DEFAULT_TABLE_FILTERS = {
   principal: 'All',
   group: 'All',
   region: 'All',   // All = Both
+  channel: 'All',
   billing: 'All',
   startPeriode: 'All',
   endPeriode: 'All'
@@ -69,6 +71,7 @@ const DetailBilling = () => {
       const passPrincipal = f.principal === 'All' || row.principal === f.principal;
       const passGroup = f.group === 'All' || row.group === f.group;
       const passRegion = f.region === 'All' || row.region === f.region;
+      const passChannel = f.channel === 'All' || row.channel === f.channel;
       const passBilling = f.billing === 'All' || BILLING_KEYS[f.billing].has(billingKey(row.principal, row.billingLine, row.description));
 
       // Filter rentang periode (bulan)
@@ -80,7 +83,7 @@ const DetailBilling = () => {
         passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
       }
 
-      return passJenis && passTagging && passPrincipal && passGroup && passRegion && passBilling && passPeriode;
+      return passJenis && passTagging && passPrincipal && passGroup && passRegion && passChannel && passBilling && passPeriode;
     });
   }, [appliedTableFilters]);
 
@@ -208,10 +211,10 @@ const DetailBilling = () => {
               </div>
 
               {/* Grid filter berlabel, rapi di semua ukuran layar */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-9 gap-3 items-end">
                 {TABLE_FILTER_FIELDS.map(field => (
                   <div key={field.key} className="flex flex-col gap-1 min-w-0">
-                    <label className="text-[11px] font-semibold text-slate-500">{field.label}</label>
+                    <label className="text-[11px] font-semibold text-slate-500 leading-tight">{field.label}</label>
                     <div className="relative flex items-center">
                       <select
                         className="w-full pl-3 pr-7 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer truncate"
@@ -230,10 +233,10 @@ const DetailBilling = () => {
 
             <div className="w-full overflow-x-auto">
               {/* Kolomnya diperbanyak, min-w dilebarkan agar tidak terjepit */}
-              <table className="w-full text-left border-collapse min-w-[1900px]">
+              <table className="w-full text-left border-collapse min-w-[2000px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {[...(billingMode !== 'All' ? [billingMode.toUpperCase()] : []), 'JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'REGION', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
+                    {[...(billingMode !== 'All' ? [billingMode.toUpperCase()] : []), 'JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'REGION', 'CHANNEL', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
                       <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
                         {head}
                       </th>
@@ -271,6 +274,9 @@ const DetailBilling = () => {
                         <td className="py-4 px-5">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{row.region}</span>
                         </td>
+                        <td className="py-4 px-5">
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : row.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{row.channel}</span>
+                        </td>
                         <td className="py-4 px-5 text-[13px] font-semibold text-slate-500">{row.status}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.tanggal}</td>
                         <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.ica}</td>
@@ -292,7 +298,7 @@ const DetailBilling = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={billingMode !== 'All' ? 16 : 15} className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan={billingMode !== 'All' ? 17 : 16} className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

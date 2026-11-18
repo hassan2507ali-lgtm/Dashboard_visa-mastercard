@@ -34,9 +34,9 @@ const JENIS_OPTIONS = ['Debit', 'Credit', 'Acquiring'];
 const JENIS_TO_GROUP = { Debit: 'Debit Card', Credit: 'Credit Card', Acquiring: 'Acquiring' };
 const DEFAULT_FILTERS = { periode: 'All', principal: 'All', jenis: 'All', region: 'All', channel: 'All' };
 
-// Filter Domestic / International & CP (Card Present) / CNP (Card Not Present)
+// Filter Domestic / International & CP (Card Present) / CNP (Card Not Present) / ATM
 const REGION_OPTIONS = ['Domestic', 'International'];
-const CHANNEL_OPTIONS = ['CP', 'CNP'];
+const CHANNEL_OPTIONS = ['CP', 'CNP', 'ATM'];
 
 // Warna bar Sales Volume (Domestic & International)
 const SV_COLORS = {
@@ -70,7 +70,8 @@ const generateDummyData = () => {
       let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
 
       const region = Math.random() > 0.3 ? 'Domestic' : 'International';
-      const channel = Math.random() > 0.45 ? 'CP' : 'CNP';
+      const channelRand = Math.random();
+      const channel = channelRand > 0.5 ? 'CP' : (channelRand > 0.2 ? 'CNP' : 'ATM');
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
@@ -408,7 +409,7 @@ const Dashboard = () => {
               </div>
 
               <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">CP / CNP</label>
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">CP / CNP / ATM</label>
                 <div className="relative">
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.channel} onChange={(e) => setFilters({...filters, channel: e.target.value})}>
                     <option value="All">All</option>

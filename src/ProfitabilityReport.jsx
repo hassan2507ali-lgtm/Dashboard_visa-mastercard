@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { capPct } from './chartAxis';
 
 // ==========================================
 // LAPORAN PROFITABILITAS PRINCIPAL
@@ -70,7 +71,8 @@ const aggregate = (db, { principal, product, start, end }) => {
     const cost = b.serviceFee + b.icFee;
     const net = income - cost;
     const netInc = net + b.incentive;
-    const ratio = (v) => (b.sv ? (v / b.sv) * 100 : null);
+    // Rasio terhadap Sales Volume (%), dibatasi maks 3% (sama dengan chart dashboard)
+    const ratio = (v) => (b.sv ? capPct((v / b.sv) * 100) : null);
     return { ...b, income, cost, net, netInc, incomeToVol: ratio(income), costToVol: ratio(cost), margin: ratio(net), marginInc: ratio(netInc) };
   };
   return { Domestic: withDerived(res.Domestic), International: withDerived(res.International), Total: withDerived(total), days: res.days.size };

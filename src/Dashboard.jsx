@@ -13,7 +13,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine, LabelList
 } from 'recharts';
 import ProfitabilityReport from './ProfitabilityReport';
-import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, niceStep } from './chartAxis';
+import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, niceStep, capPct } from './chartAxis';
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
@@ -254,13 +254,13 @@ const Dashboard = () => {
           ])),
           // Rasio terhadap Sales Volume (%) -> dipakai line chart Income / Cost / Margin
           // Rasio dibatasi maks 3%
-          incomeRatio: d.salesVolume ? Math.min(Number(((d.income / d.salesVolume) * 100).toFixed(2)), 3) : 0,
-          costRatio: d.salesVolume ? Math.min(Number(((d.cost / d.salesVolume) * 100).toFixed(2)), 3) : 0,
-          marginRatio: d.salesVolume ? Math.min(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+          incomeRatio: d.salesVolume ? capPct(Number(((d.income / d.salesVolume) * 100).toFixed(2))) : 0,
+          costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
+          marginRatio: d.salesVolume ? capPct(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2))) : 0,
           // P/L: bar Profit (margin positif) & Loss (margin negatif), line %Margin to Volume (0% saat loss)
           profit: d.income - d.cost >= 0 ? Number((d.income - d.cost).toFixed(2)) : null,
           loss: d.income - d.cost < 0 ? Number((d.income - d.cost).toFixed(2)) : null,
-          marginLine: d.salesVolume ? Math.max(0, Math.min(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)), 3)) : 0,
+          marginLine: d.salesVolume ? Math.max(0, capPct(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)))) : 0,
         }));
     };
 

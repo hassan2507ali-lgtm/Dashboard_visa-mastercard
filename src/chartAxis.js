@@ -41,3 +41,7 @@ export const formatPctTick = (v) => `${v.toLocaleString('id-ID', { maximumFracti
 
 // Props bersama untuk YAxis kiri & kanan (jarak label dari plot, tanpa garis)
 export const yAxisBase = { axisLine: false, tickLine: false, tickMargin: 8, interval: 0, allowDataOverflow: true };
+
+// Semua persentase rasio (Income / Cost / Margin to Volume) dibatasi maks 3% (nilai negatif juga maks -3%)
+export const MAX_PCT = 3;
+export const capPct = (v) => Math.max(-MAX_PCT, Math.min(MAX_PCT, v));

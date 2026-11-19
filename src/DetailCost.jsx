@@ -13,7 +13,7 @@ import {
 import LogoDanantara from './mandiri.png';
 import LogoMandiri from './danatara.png';
 
-import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase } from './chartAxis';
+import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, capPct } from './chartAxis';
 import { BILLING_HIGHLIGHTS, BILLING_SUMMARY, SUMMARY_STATUSES, TOP_BILLING_LIMIT } from './billingData';
 
 // ==========================================
@@ -169,7 +169,7 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       .map(d => ({
         ...d,
         // % Cost terhadap Sales Volume, dibatasi maks 3%
-        costRatio: d.salesVolume ? Math.min(Number(((d.cost / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+        costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
       }));
   }, [chartFilters, principal, sources, metricKey]);
 

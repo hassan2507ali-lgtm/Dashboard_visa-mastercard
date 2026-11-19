@@ -27,6 +27,7 @@ const TABLE_FILTER_FIELDS = [
   { key: 'region', label: 'Domestic / International', allLabel: 'Both', options: FILTER_OPTIONS.region },
   { key: 'channel', label: 'CP / CNP / ATM', allLabel: 'All', options: FILTER_OPTIONS.channel },
   { key: 'billing', label: 'Top / New Billing', allLabel: 'All', options: FILTER_OPTIONS.billing },
+  { key: 'sort', label: 'Sort (Total)', allLabel: 'Default', options: ['Lowest', 'Highest'] },
 ];
 
 const DEFAULT_TABLE_FILTERS = {
@@ -38,7 +39,8 @@ const DEFAULT_TABLE_FILTERS = {
   channel: 'All',
   billing: 'All',
   startPeriode: 'All',
-  endPeriode: 'All'
+  endPeriode: 'All',
+  sort: 'All'      // All = Default, Lowest / Highest berdasarkan Total
 };
 
 const DetailBilling = () => {
@@ -65,7 +67,7 @@ const DetailBilling = () => {
   // ==========================================
   const filteredTableData = useMemo(() => {
     const f = appliedTableFilters;
-    return TABLE_DB.filter(row => {
+    const rows = TABLE_DB.filter(row => {
       const passJenis = f.jenisTransaksi === 'All' || row.jenisTransaksi === f.jenisTransaksi;
       const passTagging = f.tagging === 'All' || row.tagging === f.tagging;
       const passPrincipal = f.principal === 'All' || row.principal === f.principal;
@@ -85,6 +87,11 @@ const DetailBilling = () => {
 
       return passJenis && passTagging && passPrincipal && passGroup && passRegion && passChannel && passBilling && passPeriode;
     });
+
+    // Urutkan berdasarkan Total: Lowest (kecil -> besar) / Highest (besar -> kecil)
+    if (f.sort === 'Lowest') rows.sort((a, b) => a.total - b.total);
+    if (f.sort === 'Highest') rows.sort((a, b) => b.total - a.total);
+    return rows;
   }, [appliedTableFilters]);
 
   // Reset ke halaman 1 setiap kali filter diterapkan
@@ -116,6 +123,38 @@ const DetailBilling = () => {
   // ==========================================
   // RENDER UI
   // ==========================================
+  // ==========================================
+  // KONFIGURASI KOLOM TABEL (urutan tampil di layar)
+  // Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Description, Tagging
+  // ==========================================
+  const TABLE_COLUMNS = [
+    { header: 'PRINCIPAL', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.principal },
+    { header: 'TYPE', className: 'py-4 px-5', render: r => (
+      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(r.jenisTransaksi)}`}>{r.jenisTransaksi}</span>
+    ) },
+    { header: 'REGION', className: 'py-4 px-5', render: r => (
+      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${r.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{r.region}</span>
+    ) },
+    { header: 'BILLING LINE', className: 'py-4 px-5 text-[13px] font-bold text-slate-700', render: r => r.billingLine },
+    { header: 'RATE', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.rate) },
+    { header: 'UNIT', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => r.unit.toLocaleString('id-ID') },
+    { header: 'AMOUNT', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.total) },
+    { header: 'DESCRIPTION', className: 'py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate', render: r => <span title={r.description}>{r.description}</span> },
+    { header: 'TAGGING', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.tagging },
+    // Kolom lainnya (tetap ditampilkan)
+    { header: 'GROUP', className: 'py-4 px-5 text-[13px] font-bold', render: r => <span className={r.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}>{r.group}</span> },
+    { header: 'CHANNEL', className: 'py-4 px-5', render: r => (
+      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${r.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : r.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{r.channel}</span>
+    ) },
+    { header: 'STATUS', className: 'py-4 px-5 text-[13px] font-semibold text-slate-500', render: r => r.status },
+    { header: 'TANGGAL', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.tanggal },
+    { header: 'ICA', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.ica },
+    { header: 'EQV IDR', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.eqvIdr) },
+    { header: 'PRINCIPAL FEE TYPE', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalFeeType },
+    { header: 'PRINCIPAL CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalCategory },
+    { header: 'PRINCIPAL SUB CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalSubCategory },
+  ];
+
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative">
 
@@ -211,7 +250,7 @@ const DetailBilling = () => {
               </div>
 
               {/* Grid filter berlabel, rapi di semua ukuran layar */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-9 gap-3 items-end">
+              <div className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-3 items-end">
                 {TABLE_FILTER_FIELDS.map(field => (
                   <div key={field.key} className="flex flex-col gap-1 min-w-0">
                     <label className="text-[11px] font-semibold text-slate-500 leading-tight">{field.label}</label>
@@ -236,9 +275,12 @@ const DetailBilling = () => {
               <table className="w-full text-left border-collapse min-w-[2000px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
-                    {[...(billingMode !== 'All' ? [billingMode.toUpperCase()] : []), 'JENIS TRANSAKSI', 'TAGGING', 'PRINCIPAL', 'GROUP', 'REGION', 'CHANNEL', 'STATUS', 'TANGGAL', 'ICA', 'BILLING LINE', 'DESCRIPTION', 'TOTAL', 'EQV IDR', 'PRINCIPAL FEE TYPE', 'PRINCIPAL CATEGORY', 'PRINCIPAL SUB CATEGORY'].map(head => (
-                      <th key={head} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${head === 'TOTAL' || head === 'EQV IDR' ? 'text-right' : ''}`}>
-                        {head}
+                    {billingMode !== 'All' && (
+                      <th className="py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">{billingMode.toUpperCase()}</th>
+                    )}
+                    {TABLE_COLUMNS.map(col => (
+                      <th key={col.header} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${col.right ? 'text-right' : ''}`}>
+                        {col.header}
                       </th>
                     ))}
                   </tr>
@@ -262,43 +304,14 @@ const DetailBilling = () => {
                           </td>
                         )}
                         
-                        <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(row.jenisTransaksi)}`}>
-                            {row.jenisTransaksi}
-                          </span>
-                        </td>
-                        
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.tagging}</td>
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800">{row.principal}</td>
-                        <td className={`py-4 px-5 text-[13px] font-bold ${row.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}`}>{row.group}</td>
-                        <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{row.region}</span>
-                        </td>
-                        <td className="py-4 px-5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${row.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : row.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{row.channel}</span>
-                        </td>
-                        <td className="py-4 px-5 text-[13px] font-semibold text-slate-500">{row.status}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.tanggal}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.ica}</td>
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-700">{row.billingLine}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate" title={row.description}>
-                          {row.description}
-                        </td>
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
-                          {formatDecimal(row.total)}
-                        </td>
-                        <td className="py-4 px-5 text-[13px] font-bold text-slate-800 text-right">
-                          {formatDecimal(row.eqvIdr)}
-                        </td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalFeeType}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalCategory}</td>
-                        <td className="py-4 px-5 text-[13px] font-medium text-slate-500">{row.principalSubCategory}</td>
-
+                        {TABLE_COLUMNS.map(col => (
+                          <td key={col.header} className={col.className}>{col.render(row)}</td>
+                        ))}
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={billingMode !== 'All' ? 17 : 16} className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan={TABLE_COLUMNS.length + (billingMode !== 'All' ? 1 : 0)} className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

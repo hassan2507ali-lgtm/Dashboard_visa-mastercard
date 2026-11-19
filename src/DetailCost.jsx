@@ -75,8 +75,8 @@ const CHART_DB = {
 };
 const CHART_PRINCIPALS = ['Visa', 'Mastercard'];
 const CHART_SECTIONS = [
-  { key: 'serviceFee', title: 'Service Fee', sources: ['serviceFee'] },
   { key: 'interchange', title: 'Interchange Fee', sources: ['interchange'] },
+  { key: 'serviceFee', title: 'Service Fee', sources: ['serviceFee'] },
 ];
 
 const PRINCIPAL_COLOR = { Visa: '#1e3a8a', Mastercard: '#ea580c' };
@@ -459,6 +459,21 @@ const DetailCost = () => {
                   {principal}
                 </h2>
 
+                {/* Summary: Total Item, New, Repricing */}
+                <BillingSummaryCard principal={principal} summary={BILLING_SUMMARY[principal]} />
+
+                {CHART_SECTIONS.map(section => {
+                  return (
+                    <SimpleFeeChart
+                      key={section.key}
+                      principal={principal}
+                      title={section.title}
+                      sources={section.sources}
+                      chartFilters={chartFilters}
+                    />
+                  );
+                })}
+
                 {/* Top Billing & New Billing */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
                   <BillingListCard
@@ -478,21 +493,6 @@ const DetailCost = () => {
                     onOpen={() => navigate('/detail-billing', { state: { filters: { principal, billing: 'New Billing' } } })}
                   />
                 </div>
-
-                {/* Summary: Total Item, New, Repricing */}
-                <BillingSummaryCard principal={principal} summary={BILLING_SUMMARY[principal]} />
-
-                {CHART_SECTIONS.map(section => {
-                  return (
-                    <SimpleFeeChart
-                      key={section.key}
-                      principal={principal}
-                      title={section.title}
-                      sources={section.sources}
-                      chartFilters={chartFilters}
-                    />
-                  );
-                })}
               </div>
             ))}
           </div>

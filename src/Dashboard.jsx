@@ -2,17 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
-  Calendar as CalendarIcon, User, ChevronUp, ChevronDown, LogOut, Filter, 
+  User, ChevronUp, ChevronDown, LogOut, Filter, 
   CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
-  CardSim
+  CardSim, Table2
 } from 'lucide-react';
 
 // RECHARTS UNTUK LINE CHART PER PRINCIPAL
 import {
   Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, ResponsiveContainer, Legend
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine, LabelList
 } from 'recharts';
-import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase } from './chartAxis';
+import ProfitabilityReport from './ProfitabilityReport';
+import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, niceStep } from './chartAxis';
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
@@ -24,19 +25,34 @@ import LogoDanantara from './mandiri.png';
 const PRINCIPAL_LIST = ['Visa', 'Mastercard'];
 const METRIC_LIST = [
   { key: 'salesVolume', label: 'Sales Volume' },
-  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'SV/Income' },
-  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'SV/Cost' },
-  { key: 'margin', label: 'Margin', ratioKey: 'marginRatio', ratioLabel: 'SV/Margin' },
+  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'SV/Income', stacked: true },
+  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'SV/Cost', stacked: true },
+  { key: 'margin', label: 'P/L', ratioKey: 'marginLine', ratioLabel: '%Margin to Volume', pl: true },
 ];
+
+// Warna chart P/L: bar Profit (hijau), Loss (merah), line %Margin to Volume (biru)
+const PL_COLORS = { profit: '#22c55e', loss: '#ef4444', line: '#3b82f6' };
+
+// Bar Income & Cost ditumpuk (stacked) per group: Debit / Credit / Acquiring
+const STACK_GROUPS = [
+  { group: 'Debit Card', suffix: 'Debit', label: 'Debit' },
+  { group: 'Credit Card', suffix: 'Credit', label: 'Credit' },
+  { group: 'Acquiring', suffix: 'Acquiring', label: 'Acquiring' },
+];
+const STACK_COLORS = {
+  Visa: ['#06b6d4', '#6366f1', '#1e3a8a'],        // cyan, indigo, navy
+  Mastercard: ['#facc15', '#f97316', '#dc2626'],  // kuning, oranye, merah
+};
 
 // Filter jenis transaksi -> mapping ke field `group` di data
 const JENIS_OPTIONS = ['Debit', 'Credit', 'Acquiring'];
 const JENIS_TO_GROUP = { Debit: 'Debit Card', Credit: 'Credit Card', Acquiring: 'Acquiring' };
-const DEFAULT_FILTERS = { periode: 'All', principal: 'All', jenis: 'All', region: 'All', channel: 'All' };
+// Periode: Monthly = nilai per bulan, Accumulative = akumulasi berjalan (YTD) dari bulan ke bulan
+const PERIODE_OPTIONS = ['Monthly', 'Accumulative'];
+const DEFAULT_FILTERS = { periode: 'Monthly', jenis: 'All', region: 'All' };
 
-// Filter Domestic / International & CP (Card Present) / CNP (Card Not Present) / ATM
+// Filter Domestic / International
 const REGION_OPTIONS = ['Domestic', 'International'];
-const CHANNEL_OPTIONS = ['CP', 'CNP', 'ATM'];
 
 // Warna bar Sales Volume (Domestic & International)
 const SV_COLORS = {
@@ -47,14 +63,20 @@ const SV_COLORS = {
 // Label sumbu amount: ringkas (mis. 0, 2,5, 1,2 rb, 3 jt)
 const formatAxisCompact = (v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 2 });
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+const formatRupiah = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatValue(Math.abs(Number(val || 0)))}`;
+
+// Tahun yang ditampilkan di chart & tahun pembanding untuk YoY
+const CURRENT_YEAR = 2026;
+const PREV_YEAR = CURRENT_YEAR - 1;
 
 // ==========================================
 // 1. GENERATE DUMMY DATABASE MASIF
 // ==========================================
 const generateDummyData = () => {
   const data = [];
-  let currentDate = new Date(2026, 0, 1);
-  const endDate = new Date(2026, 11, 31);
+  // Data mulai tahun sebelumnya supaya YoY (Year on Year) bisa dihitung
+  let currentDate = new Date(PREV_YEAR, 0, 1);
+  const endDate = new Date(CURRENT_YEAR, 11, 31);
   
   let i = 0;
   while (currentDate <= endDate) {
@@ -75,12 +97,14 @@ const generateDummyData = () => {
 
       const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-      const baseCost = (Math.random() * 3 + 2) * wave; 
+      const yearFactor = currentDate.getFullYear() === PREV_YEAR ? 0.92 : 1; // tahun lalu sedikit lebih kecil
+      const baseCost = (Math.random() * 3 + 2) * wave * yearFactor; 
       const principalCost = Number(baseCost.toFixed(3));
       // SV dibuat jauh lebih besar dari cost -> Cost/SV ±1,1-1,8%, Income/SV maks ±2,8% (semua rasio < 3%)
       const salesVolume = Number((principalCost * (55 + Math.random() * 35)).toFixed(0));
       
-      const incomeRatio = 1.25 + Math.sin(monthIndex * 1.3) * 0.1 + Math.random() * 0.2; // selalu > 1 -> margin positif
+      // Rasio income/cost naik-turun per bulan -> sebagian bulan profit, sebagian loss (untuk chart P/L)
+      const incomeRatio = 1.05 + Math.sin(monthIndex * 2.2) * 0.25 + Math.random() * 0.1;
       const income = Number((principalCost * incomeRatio).toFixed(3));
 
       const costRateBase = 0.038 + (wave - 1.2) * 0.005;
@@ -119,47 +143,45 @@ const Dashboard = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Mode Laporan: tampilkan / sembunyikan Laporan Profitabilitas Principal (diingat di browser)
+  const [showReport, setShowReport] = useState(() => {
+    try { return localStorage.getItem('dashboard.showReport') === 'true'; } catch { return false; }
+  });
+  const toggleReport = () => {
+    setShowReport(prev => {
+      const next = !prev;
+      try { localStorage.setItem('dashboard.showReport', String(next)); } catch { /* abaikan */ }
+      return next;
+    });
+  };
+
   const [dashboardData, setDashboardData] = useState({
     summary: { sales: 0, cost: 0, rate: 0 },
     trendData: {},
+    prevYearData: {},
     groupStats: [],
   });
 
-  const periodTexts = {
-    'All': { header: '31 Agu 2026', vs: 'Jul 2026' },
-    'Agustus 2026': { header: '31 Agu 2026', vs: 'Jul 2026' },
-    'Juli 2026': { header: '31 Jul 2026', vs: 'Jun 2026' },
-    'Juni 2026': { header: '30 Jun 2026', vs: 'Mei 2026' },
-    'Mei 2026': { header: '31 Mei 2026', vs: 'Apr 2026' },
-    'April 2026': { header: '30 Apr 2026', vs: 'Mar 2026' }
-  };
-  const currentPeriodInfo = periodTexts[appliedFilters.periode] || periodTexts['All'];
-  const headerDateTxt = currentPeriodInfo.header;
 
   // ==========================================
   // 3. LOGIKA FILTERING & AGREGASI (DINAMIS)
   // ==========================================
   useEffect(() => {
-    const periodMap = {
-      'Agustus 2026': '2026-08', 'Juli 2026': '2026-07', 'Juni 2026': '2026-06',
-      'Mei 2026': '2026-05', 'April 2026': '2026-04', 'All': 'All'
-    };
-    const targetPeriod = periodMap[appliedFilters.periode];
-    const isAllPeriod = targetPeriod === 'All';
+    const isAccumulative = appliedFilters.periode === 'Accumulative';
 
-    const globalFilteredDB = DUMMY_DB.filter(item => {
-      const passPeriode = isAllPeriod || item.date.startsWith(targetPeriod);
-      const passPrincipal = appliedFilters.principal === 'All' || item.principal === appliedFilters.principal;
+    const allYearsDB = DUMMY_DB.filter(item => {
       const passJenis = appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
       const passRegion = appliedFilters.region === 'All' || item.region === appliedFilters.region;
-      const passChannel = appliedFilters.channel === 'All' || item.channel === appliedFilters.channel;
-      return passPeriode && passPrincipal && passJenis && passRegion && passChannel;
+      return passJenis && passRegion;
     });
+    const globalFilteredDB = allYearsDB.filter(item => item.date.startsWith(`${CURRENT_YEAR}-`));
+    const prevYearDB = allYearsDB.filter(item => item.date.startsWith(`${PREV_YEAR}-`));
 
     if (globalFilteredDB.length === 0) {
       setDashboardData({
         summary: { sales: 0, cost: 0, rate: 0 },
         trendData: {},
+        prevYearData: {},
         groupStats: []
       });
       return;
@@ -179,18 +201,22 @@ const Dashboard = () => {
 
     // Agregasi trend per principal (Visa / Mastercard) untuk 4 metrik: Sales Volume, Income, Cost, Margin
     const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
-    const getTrendData = (principalName) => {
+    const getTrendData = (principalName, sourceDB) => {
       const chartMap = {};
-      globalFilteredDB.forEach(item => {
+      sourceDB.forEach(item => {
         if (item.principal !== principalName) return;
         const d = new Date(item.date);
-        const groupKey = isAllPeriod
-          ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-          : item.date;
-        const displayLabel = isAllPeriod ? monthsShort[d.getMonth()] : `${d.getDate()}`;
+        const groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const displayLabel = monthsShort[d.getMonth()];
 
         if (!chartMap[groupKey]) {
           chartMap[groupKey] = { name: displayLabel, sortKey: groupKey, salesVolume: 0, salesDomestic: 0, salesInternational: 0, income: 0, cost: 0 };
+          STACK_GROUPS.forEach(g => { chartMap[groupKey][`income${g.suffix}`] = 0; chartMap[groupKey][`cost${g.suffix}`] = 0; });
+        }
+        const stack = STACK_GROUPS.find(g => g.group === item.group);
+        if (stack) {
+          chartMap[groupKey][`income${stack.suffix}`] += item.income;
+          chartMap[groupKey][`cost${stack.suffix}`] += item.principalCost;
         }
         chartMap[groupKey].salesVolume += item.salesVolume;
         if (item.region === 'International') chartMap[groupKey].salesInternational += item.salesVolume;
@@ -199,9 +225,21 @@ const Dashboard = () => {
         chartMap[groupKey].cost += item.principalCost;
       });
 
-      return Object.values(chartMap)
-        .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-        .map(d => ({
+      const monthly = Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+      // Accumulative: setiap bulan = total berjalan dari bulan pertama s.d. bulan tersebut
+      const rows = isAccumulative
+        ? monthly.reduce((acc, d) => {
+            const prev = acc[acc.length - 1];
+            const next = { ...d };
+            // Jumlahkan semua field angka dengan bulan sebelumnya
+            if (prev) Object.keys(d).forEach(k => { if (typeof d[k] === 'number') next[k] = prev[k] + d[k]; });
+            acc.push(next);
+            return acc;
+          }, [])
+        : monthly;
+
+      return rows.map(d => ({
           name: d.name,
           salesVolume: Number(d.salesVolume.toFixed(0)),
           salesDomestic: Number(d.salesDomestic.toFixed(0)),
@@ -210,24 +248,33 @@ const Dashboard = () => {
           income: Number(d.income.toFixed(2)),
           cost: Number(d.cost.toFixed(2)),
           margin: Number((d.income - d.cost).toFixed(2)),
+          ...Object.fromEntries(STACK_GROUPS.flatMap(g => [
+            [`income${g.suffix}`, Number(d[`income${g.suffix}`].toFixed(2))],
+            [`cost${g.suffix}`, Number(d[`cost${g.suffix}`].toFixed(2))],
+          ])),
           // Rasio terhadap Sales Volume (%) -> dipakai line chart Income / Cost / Margin
           // Rasio dibatasi maks 3%
           incomeRatio: d.salesVolume ? Math.min(Number(((d.income / d.salesVolume) * 100).toFixed(2)), 3) : 0,
           costRatio: d.salesVolume ? Math.min(Number(((d.cost / d.salesVolume) * 100).toFixed(2)), 3) : 0,
           marginRatio: d.salesVolume ? Math.min(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)), 3) : 0,
+          // P/L: bar Profit (margin positif) & Loss (margin negatif), line %Margin to Volume (0% saat loss)
+          profit: d.income - d.cost >= 0 ? Number((d.income - d.cost).toFixed(2)) : null,
+          loss: d.income - d.cost < 0 ? Number((d.income - d.cost).toFixed(2)) : null,
+          marginLine: d.salesVolume ? Math.max(0, Math.min(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)), 3)) : 0,
         }));
     };
 
     const trendData = {};
+    const prevYearData = {};
     PRINCIPAL_LIST.forEach(p => {
-      if (appliedFilters.principal === 'All' || appliedFilters.principal === p) {
-        trendData[p] = getTrendData(p);
-      }
+      trendData[p] = getTrendData(p, globalFilteredDB);
+      prevYearData[p] = getTrendData(p, prevYearDB);
     });
 
     setDashboardData({
       summary: { sales: totalSales.toFixed(0), cost: totalCost.toFixed(2), rate: 0 },
       trendData,
+      prevYearData,
       groupStats: [
         { name: 'Credit Card', totalSort: Number(creditService.toFixed(2)) }, 
         { name: 'Debit Card', totalSort: Number(debitService.toFixed(2)) }, 
@@ -247,7 +294,7 @@ const Dashboard = () => {
   const handleLogout = () => alert("Logout berhasil!");
   
   // Tooltip Income / Cost / Margin
-  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, ratioKey, ratioLabel, ratioColor, data }) => {
+  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, ratioKey, ratioLabel, ratioColor, data, stackColors }) => {
     if (!active || !payload || !payload.length) return null;
     const row = payload[0].payload;
     const idx = data.indexOf(row);
@@ -264,6 +311,13 @@ const Dashboard = () => {
           <span className="text-slate-600 font-medium">{metricLabel}:</span>
           <span className="font-bold text-slate-800">{formatValue(row[metricKey])}</span>
         </div>
+        {stackColors && STACK_GROUPS.map((g, i) => (
+          <div key={g.suffix} className="flex items-center gap-2 pl-4">
+            <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: stackColors[i] }}></div>
+            <span className="text-slate-500">{g.label}:</span>
+            <span className="font-semibold text-slate-700">{formatValue(row[`${metricKey}${g.suffix}`])}</span>
+          </div>
+        ))}
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ratioColor }}></div>
           <span className="text-slate-600 font-medium">{ratioLabel}:</span>
@@ -326,6 +380,19 @@ const Dashboard = () => {
             <button onClick={() => navigate('/detail-billing')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Billing"><FileText size={24} strokeWidth={1.5} /></button>
           </nav>
         </div>
+
+        {/* TOMBOL LAPORAN (hanya di halaman Dashboard): klik = nyala & laporan muncul, klik lagi = mati & laporan hilang */}
+        <button
+          onClick={toggleReport}
+          title={showReport ? 'Sembunyikan Laporan Profitabilitas' : 'Tampilkan Laporan Profitabilitas'}
+          aria-pressed={showReport}
+          className={`group mt-4 mb-auto flex flex-col items-center gap-1 transition-colors ${showReport ? 'text-blue-600' : 'text-slate-400 hover:text-blue-600'}`}
+        >
+          <span className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${showReport ? 'bg-blue-50' : 'group-hover:bg-white'}`}>
+            <Table2 size={24} strokeWidth={1.5} />
+          </span>
+          <span className="text-[10px] font-semibold">EX</span>
+        </button>
         <div className="flex flex-col gap-4 relative">
           <div className="relative flex justify-center">
             <button onClick={() => setIsProfileOpen(!isProfileOpen)} className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
@@ -347,7 +414,7 @@ const Dashboard = () => {
           <div className="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-blue-600"><User size={16} /></div>
         </div>
 
-        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+        <div className="p-4 sm:p-6 lg:py-8 lg:pl-4 lg:pr-6 max-w-[1600px] w-full">
           
           {/* BANNER BIRU KEPALA */}
           <div className="w-full h-12 sm:h-14 bg-[#0A3A6A] rounded-xl flex justify-between items-center px-5 sm:px-8 mb-8 shadow-md overflow-hidden">
@@ -359,28 +426,14 @@ const Dashboard = () => {
             <div className="shrink-0 flex items-center"><img src={LogoDanantara} alt="Danantara" className="h-5 sm:h-4 scale-[2] sm:scale-[2.5] transform origin-right object-contain" /></div>
           </div>
 
-          {/* FILTER UTAMA (KIRI TEKS, KANAN FILTER) */}
-          <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6 pt-2">
-            <div className="text-[13px] font-bold text-slate-500 whitespace-nowrap order-2 xl:order-1 flex items-center gap-2">
-              <CalendarIcon size={16} className="text-blue-600" /> Data per {headerDateTxt}
-            </div>
-
+          {/* FILTER UTAMA (RATA KANAN) */}
+          <header className="flex flex-col xl:flex-row xl:justify-end items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6 pt-2">
             <div className="flex flex-wrap items-end justify-end gap-3 w-full xl:w-auto order-1 xl:order-2" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
                 <div className="relative">
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.periode} onChange={(e) => setFilters({...filters, periode: e.target.value})}>
-                    <option value="All">All Periode</option><option value="Agustus 2026">Agustus 2026</option><option value="Juli 2026">Juli 2026</option><option value="Juni 2026">Juni 2026</option><option value="Mei 2026">Mei 2026</option><option value="April 2026">April 2026</option>
-                  </select>
-                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-              </div>
-
-              <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Principal</label>
-                <div className="relative">
-                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.principal} onChange={(e) => setFilters({...filters, principal: e.target.value})}>
-                    <option value="All">All</option><option value="Mastercard">Mastercard</option><option value="Visa">Visa</option>
+                    {PERIODE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
@@ -408,17 +461,6 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">CP / CNP / ATM</label>
-                <div className="relative">
-                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.channel} onChange={(e) => setFilters({...filters, channel: e.target.value})}>
-                    <option value="All">All</option>
-                    {CHANNEL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-              </div>
-
               <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">Apply</button>
               <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">Reset</button>
             </div>
@@ -426,6 +468,9 @@ const Dashboard = () => {
 
           {/* MAIN CHARTS AREA: GRID LINE CHART PER PRINCIPAL (SALES VOLUME, INCOME, COST, MARGIN) */}
           <div className="flex flex-col gap-6 pb-10">
+            {/* LAPORAN PROFITABILITAS PRINCIPAL (di atas grid Visa) — muncul jika tombol Mode di sidebar ON */}
+            {showReport && <ProfitabilityReport db={DUMMY_DB} />}
+
             {Object.keys(dashboardData.trendData).length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/60 p-10 text-center text-[13px] text-slate-400">Tidak ada data untuk filter ini.</div>
             )}
@@ -456,29 +501,63 @@ const Dashboard = () => {
                       const prev = data[data.length - 2];
                       const lastVal = last ? last[metric.key] : 0;
                       const prevVal = prev ? prev[metric.key] : null;
-                      const diffPct = prevVal ? ((lastVal - prevVal) / Math.abs(prevVal)) * 100 : null;
-                      const isUp = diffPct !== null && diffPct >= 0;
+                      // MoM: vs bulan sebelumnya, YoY: vs bulan yang sama tahun lalu
+                      const lastYearRow = last ? (dashboardData.prevYearData[principalName] || []).find(r => r.name === last.name) : null;
+                      const lastYearVal = lastYearRow ? lastYearRow[metric.key] : null;
+                      const pctChange = (base) => (base ? ((lastVal - base) / Math.abs(base)) * 100 : null);
                       const goodWhenUp = metric.key !== 'cost';
-                      const trendColor = diffPct === null ? 'text-slate-400' : (isUp === goodWhenUp ? 'text-emerald-500' : 'text-rose-500');
+                      const changeItems = [
+                        { label: 'YoY', pct: pctChange(lastYearVal) },
+                        { label: 'MoM', pct: pctChange(prevVal) },
+                      ].filter(c => c.pct !== null);
+                      // P/L: 4 interval -> 3 di atas nol (profit) & 1 di bawah nol (loss), jadi garis nol turun ke bawah.
+                      // Line % pakai sumbu kanan tersembunyi dengan nol yang sejajar.
+                      const plMaxPos = Math.max(0, ...data.map(d => d.margin));
+                      const plMaxNeg = Math.max(0, ...data.map(d => -d.margin));
+                      const plNegSteps = plMaxNeg > 0 ? 1 : 0;
+                      const plStep = niceStep(Math.max(1e-9, plMaxPos / (AXIS_INTERVALS - plNegSteps), plMaxNeg));
+                      const plTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => +((i - plNegSteps) * plStep).toPrecision(12));
+                      const plPctTop = Math.max(0.01, ...data.map(d => d.marginLine)) * 1.3;
+                      const plPctDomain = [-plPctTop * plNegSteps / (AXIS_INTERVALS - plNegSteps), plPctTop];
+                      const changeColor = (pct) => ((pct >= 0) === goodWhenUp ? 'text-emerald-500' : 'text-rose-500');
 
                       return (
                         <div key={metric.key} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[300px]">
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="text-[13px] font-bold text-slate-700">{metric.label}</p>
-                              <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1">{formatValue(lastVal)}</p>
-                              <p className="text-[10px] text-slate-400">Periode terakhir</p>
+                              <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1">{formatRupiah(lastVal)}</p>
+                              <p className="text-[10px] text-slate-400">Periode</p>
                             </div>
-                            {diffPct !== null && (
-                              <div className="text-right">
-                                <p className={`text-[13px] font-bold ${trendColor}`}>{isUp ? '▲' : '▼'} {Math.abs(diffPct).toFixed(1)}%</p>
-                                <p className="text-[10px] text-slate-400">vs periode sebelumnya</p>
+                            {changeItems.length > 0 && (
+                              <div className="flex gap-3 text-right">
+                                {changeItems.map(c => (
+                                  <div key={c.label}>
+                                    <p className={`text-[13px] font-bold ${changeColor(c.pct)}`}>{c.pct >= 0 ? '▲' : '▼'} {Math.abs(c.pct).toFixed(1)}%</p>
+                                    <p className="text-[10px] text-slate-400">{c.label}</p>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
                           <div className="flex-1 w-full mt-3">
                             <ResponsiveContainer width="100%" height="100%">
-                              {metric.key === 'salesVolume' ? (
+                              {metric.pl ? (
+                                <ComposedChart data={data} margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
+                                  <YAxis yAxisId="val" {...yAxisBase} tickMargin={4} tick={{ fontSize: 10, fill: '#64748b' }} width={40} domain={[plTicks[0], plTicks[AXIS_INTERVALS]]} ticks={plTicks} tickFormatter={formatAxisCompact} />
+                                  <YAxis yAxisId="pct" orientation="right" hide domain={plPctDomain} allowDataOverflow />
+                                  <RechartsTooltip content={<MetricTooltip metricKey="margin" metricLabel="P/L" ratioKey="marginLine" ratioLabel="%Margin to Volume" ratioColor={PL_COLORS.line} data={data} />} cursor={{ fill: '#f8fafc' }} />
+                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                  <ReferenceLine yAxisId="val" y={0} stroke="#0f172a" strokeWidth={1.5} />
+                                  <Bar yAxisId="val" dataKey="profit" name="Profit" stackId="pl" fill={PL_COLORS.profit} radius={[3, 3, 0, 0]} />
+                                  <Bar yAxisId="val" dataKey="loss" name="Loss" stackId="pl" fill={PL_COLORS.loss} radius={[0, 0, 3, 3]} />
+                                  <Line yAxisId="pct" type="linear" dataKey="marginLine" name="%Margin to Volume" stroke={PL_COLORS.line} strokeWidth={2} dot={false} activeDot={{ r: 4 }}>
+                                    <LabelList dataKey="marginLine" position="top" offset={6} formatter={formatPctTick} style={{ fontSize: 9, fontWeight: 700, fill: '#0f172a' }} />
+                                  </Line>
+                                </ComposedChart>
+                              ) : metric.key === 'salesVolume' ? (
                                 <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
                                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
@@ -496,8 +575,17 @@ const Dashboard = () => {
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
                                   <YAxis yAxisId="val" {...leftAxisProps} />
                                   <YAxis yAxisId="pct" {...rightAxisProps} />
-                                  <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} ratioKey={metric.ratioKey} ratioLabel={metric.ratioLabel} ratioColor={ratioColor} data={data} />} cursor={{ fill: '#f8fafc' }} />
-                                  <Bar yAxisId="val" dataKey={metric.key} name={metric.label} fill={lineColor} radius={[3, 3, 0, 0]} />
+                                  <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} ratioKey={metric.ratioKey} ratioLabel={metric.ratioLabel} ratioColor={ratioColor} data={data} stackColors={metric.stacked ? STACK_COLORS[principalName] : null} />} cursor={{ fill: '#f8fafc' }} />
+                                  {metric.stacked ? (
+                                    <>
+                                      <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                      {STACK_GROUPS.map((g, i) => (
+                                        <Bar key={g.suffix} yAxisId="val" dataKey={`${metric.key}${g.suffix}`} name={g.label} stackId={metric.key} fill={STACK_COLORS[principalName][i]} radius={i === STACK_GROUPS.length - 1 ? [3, 3, 0, 0] : 0} />
+                                      ))}
+                                    </>
+                                  ) : (
+                                    <Bar yAxisId="val" dataKey={metric.key} name={metric.label} fill={lineColor} radius={[3, 3, 0, 0]} />
+                                  )}
                                   <Line yAxisId="pct" type="linear" dataKey={metric.ratioKey} name={metric.ratioLabel} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} />
                                 </ComposedChart>
                               )}

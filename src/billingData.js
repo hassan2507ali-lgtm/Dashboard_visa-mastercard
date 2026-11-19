@@ -98,7 +98,12 @@ const assignChannel = () => {
   const r = Math.random();
   return r > 0.5 ? 'CP' : (r > 0.2 ? 'CNP' : 'ATM');
 };
-export const TABLE_DB = generateTableData().map(row => ({ ...row, region: assignRegion(row), channel: assignChannel() }));
+// Unit (jumlah transaksi) dummy, Rate = Amount (total) / Unit
+const assignUnitRate = (row) => {
+  const unit = Math.floor(Math.random() * 9900) + 100;
+  return { unit, rate: row.total / unit };
+};
+export const TABLE_DB = generateTableData().map(row => ({ ...row, region: assignRegion(row), channel: assignChannel(), ...assignUnitRate(row) }));
 
 // ==========================================
 // RINGKASAN DETAIL BILLING: TOP BILLING & NEW BILLING PER PRINCIPAL

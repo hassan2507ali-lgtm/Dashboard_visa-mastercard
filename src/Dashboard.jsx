@@ -26,15 +26,15 @@ import LogoDanantara from './mandiri.png';
 const PRINCIPAL_LIST = ['Visa', 'Mastercard'];
 const METRIC_LIST = [
   { key: 'salesVolume', label: 'Sales Volume' },
-  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'Income/SV', stacked: true },
-  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'Cost/SV', stacked: true },
+  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'Income to SV', stacked: true },
+  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'Cost to SV', stacked: true },
   { key: 'margin', label: 'P/L', ratioKey: 'marginLine', ratioLabel: '%Margin to Volume', pl: true },
 ];
 
 // Warna chart P/L: bar Profit (hijau), Loss (merah), line %Margin with incentive (biru) & without incentive (abu)
-const PL_COLORS = { profit: '#22c55e', loss: '#ef4444', line: '#3b82f6', lineNoInc: '#94a3b8' };
-// Incentive Principal = 80% dari Cost (sama dengan Laporan Profitabilitas)
-const INCENTIVE_RATE = 0.8;
+const PL_COLORS = { profit: '#22c55e', loss: '#ef4444', line: '#3b82f6', lineNoInc: '#94a3b8', barInc: '#cbd5e1' };
+// Incentive Principal = 10% dari Cost (sama dengan Laporan Profitabilitas)
+const INCENTIVE_RATE = 0.1;
 // Rincian line % Margin di chart P/L (urutan = urutan di tooltip)
 const PL_LINES = [
   { key: 'marginIncLine', label: 'With Incentive', color: PL_COLORS.line },
@@ -62,8 +62,9 @@ const STACK_COLORS = {
 STACK_COLORS.Mastercard = STACK_COLORS.Visa;
 // Legend mengikuti urutan konfigurasi (default Recharts mengurutkan alfabetis)
 const PL_LEGEND = ['Profit', 'Loss', ...PL_LINES.map(l => l.label)];
+const SV_LEGEND = ['Domestic', 'International', 'International %'];
 const legendOrder = (metricKey) => {
-  const names = metricKey === 'margin' ? PL_LEGEND : STACK_CONFIG[metricKey].map(c => c.label);
+  const names = metricKey === 'margin' ? PL_LEGEND : metricKey === 'salesVolume' ? SV_LEGEND : STACK_CONFIG[metricKey].map(c => c.label);
   return (item) => { const i = names.indexOf(item.value); return i === -1 ? names.length : i; };
 };
 
@@ -217,7 +218,7 @@ const Dashboard = () => {
   const toggleReport = () => {
     const next = !showReport;
     // Setiap masuk mode EX, Pilihan kembali ke default (tahun & bulan hari ini)
-    if (next) setReportSel(defaultReportSel(new Date().getFullYear()));
+    if (next) { setReportSel(defaultReportSel(new Date().getFullYear())); setReportTouched(false); }
     try { localStorage.setItem('dashboard.showReport', String(next)); } catch { /* abaikan */ }
     setShowReport(next);
   };
@@ -227,6 +228,11 @@ const Dashboard = () => {
   // Tombol EX & tabel laporan hanya tersedia saat periode Accumulative sudah di-Apply
   const isAccumulativeView = appliedFilters.periode === 'Accumulative';
   const reportActive = isAccumulativeView && showReport;
+  // Chart Visa / Mastercard baru ikut Pilihan tabel setelah user mengubah filter di tabel.
+  // Sebelumnya (default saat Accumulative di-Apply) chart sama dengan tampilan Monthly.
+  const [reportTouched, setReportTouched] = useState(false);
+  const chartFromReport = reportActive && reportTouched;
+  const handleReportChange = (update) => { setReportTouched(true); setReportSel(update); };
 
   const [dashboardData, setDashboardData] = useState({
     summary: { sales: 0, cost: 0, rate: 0 },
@@ -245,19 +251,20 @@ const Dashboard = () => {
     // Saat tabel laporan tampil, Pilihan di tabel yang menentukan chart:
     // Jenis Produk & Principal -> data, Tahun & Bulan/Quarter -> rentang, Show -> per bulan / per quarter,
     // Tipe Cumulative -> akumulasi berjalan (YTD), Position -> nilai per periode
-    const isAccumulative = reportActive ? reportSel.type === 'Cumulative' : appliedFilters.periode === 'Accumulative';
-    const byQuarter = reportActive && reportSel.show === 'Quarterly';
-    const year = reportActive ? Number(reportSel.year) : CURRENT_YEAR;
+    // Tanpa filter tabel, chart selalu tampil seperti Monthly (nilai per bulan)
+    const isAccumulative = chartFromReport && reportSel.type === 'Cumulative';
+    const byQuarter = chartFromReport && reportSel.show === 'Quarterly';
+    const year = chartFromReport ? Number(reportSel.year) : CURRENT_YEAR;
     // Data ditarik s.d. bulan terakhir yang sudah lewat: tahun berjalan -> bulan lalu (mis. sekarang Nov -> Jan s.d. Okt),
     // tahun sebelumnya -> s.d. Desember. Jika Bulan/Quarter di laporan lebih awal, pakai yang lebih awal.
     const now = new Date();
     const lastClosedMonth = year < now.getFullYear() ? 11 : year === now.getFullYear() ? now.getMonth() - 1 : -1;
-    const endMonth = Math.min(reportActive ? periodEndMonth(reportSel) : 11, lastClosedMonth);
+    const endMonth = Math.min(chartFromReport ? periodEndMonth(reportSel) : 11, lastClosedMonth);
     const periodLabel = endMonth >= 0 ? `${MONTHS[endMonth]} ${year}` : `${year}`;
-    const principals = reportActive && reportSel.principal !== 'Both' ? [reportSel.principal] : PRINCIPAL_LIST;
+    const principals = chartFromReport && reportSel.principal !== 'Both' ? [reportSel.principal] : PRINCIPAL_LIST;
 
     const allYearsDB = DUMMY_DB.filter(item => {
-      const passJenis = reportActive
+      const passJenis = chartFromReport
         ? reportSel.product === 'All' || item.group === reportSel.product
         : appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
       const passRegion = appliedFilters.region === 'All' || item.region === appliedFilters.region;
@@ -346,6 +353,11 @@ const Dashboard = () => {
           // P/L: bar Profit (margin positif) & Loss (margin negatif), line %Margin to Volume (0% saat loss)
           profit: d.income - d.cost >= 0 ? Number((d.income - d.cost).toFixed(2)) : null,
           loss: d.income - d.cost < 0 ? Number((d.income - d.cost).toFixed(2)) : null,
+          // Bar abu-abu: P/L with incentive (Income - Cost + Incentive Principal)
+          marginInc: Number((d.income - d.cost + d.cost * INCENTIVE_RATE).toFixed(2)),
+          // Segmen abu-abu yang ditumpuk di atas bar Profit (atau mulai dari 0 saat Loss),
+          // sehingga puncak bar = P/L with incentive
+          incSegment: Math.max(0, Number((d.income - d.cost + d.cost * INCENTIVE_RATE - Math.max(0, d.income - d.cost)).toFixed(2))),
           marginLine: d.salesVolume ? Math.max(0, capPct(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)))) : 0,
           // %Margin with incentive: (Income - Cost + Incentive Principal) / Sales Volume
           marginIncLine: d.salesVolume ? Math.max(0, capPct(Number((((d.income - d.cost + d.cost * INCENTIVE_RATE) / d.salesVolume) * 100).toFixed(2)))) : 0,
@@ -371,16 +383,17 @@ const Dashboard = () => {
       byQuarter,
       periodLabel,
     });
-  }, [appliedFilters, reportActive, reportSel]);
+  }, [appliedFilters, chartFromReport, reportSel]);
 
   // ==========================================
   // 4. HANDLERS & CONFIGURATIONS
   // ==========================================
-  const handleApply = () => setAppliedFilters({ ...filters });
+  const handleApply = () => { setAppliedFilters({ ...filters }); setReportTouched(false); };
   const handlePeriodeChange = (periode) => setFilters(prev => ({ ...prev, periode }));
   const handleReset = () => {
     setFilters({ ...DEFAULT_FILTERS });
     setAppliedFilters({ ...DEFAULT_FILTERS });
+    setReportTouched(false);
   };
   const handleLogout = () => alert("Logout berhasil!");
   
@@ -402,6 +415,13 @@ const Dashboard = () => {
           <span className="text-slate-600 font-medium">{metricLabel}:</span>
           <span className="font-bold text-slate-800">{formatValue(row[metricKey])}</span>
         </div>
+        {metricKey === 'margin' && (
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PL_COLORS.barInc }}></div>
+            <span className="text-slate-600 font-medium">P/L with Incentive:</span>
+            <span className="font-bold text-slate-800">{formatValue(row.marginInc)}</span>
+          </div>
+        )}
         {stackColors && STACK_CONFIG[metricKey].map(c => (
           <div key={c.field} className="flex items-center gap-2 pl-4">
             <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: stackColors[c.color] }}></div>
@@ -549,6 +569,17 @@ const Dashboard = () => {
               </div>
 
               <div className="flex flex-col w-full sm:w-auto">
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Jenis Produk</label>
+                <div className="relative">
+                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.jenis} onChange={(e) => setFilters({...filters, jenis: e.target.value})}>
+                    <option value="All">All</option>
+                    {JENIS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              </div>
+
+              <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Domestic / International</label>
                 <div className="relative">
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.region} onChange={(e) => setFilters({...filters, region: e.target.value})}>
@@ -567,7 +598,7 @@ const Dashboard = () => {
           {/* MAIN CHARTS AREA: GRID LINE CHART PER PRINCIPAL (SALES VOLUME, INCOME, COST, MARGIN) */}
           <div className="flex flex-col gap-6 pb-10">
             {/* LAPORAN PROFITABILITAS PRINCIPAL (di atas grid Visa) — muncul jika tombol Mode di sidebar ON */}
-            {reportActive && <ProfitabilityReport db={DUMMY_DB} sel={reportSel} onChange={setReportSel} />}
+            {reportActive && <ProfitabilityReport db={DUMMY_DB} sel={reportSel} onChange={handleReportChange} />}
 
             {Object.keys(dashboardData.trendData).length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/60 p-10 text-center text-[13px] text-slate-400">Tidak ada data untuk filter ini.</div>
@@ -609,8 +640,8 @@ const Dashboard = () => {
                       ].filter(c => c.pct !== null);
                       // P/L: 4 interval -> 3 di atas nol (profit) & 1 di bawah nol (loss), jadi garis nol turun ke bawah.
                       // Line % pakai sumbu kanan tersembunyi dengan nol yang sejajar.
-                      const plMaxPos = Math.max(0, ...data.map(d => d.margin));
-                      const plMaxNeg = Math.max(0, ...data.map(d => -d.margin));
+                      const plMaxPos = Math.max(0, ...data.map(d => Math.max(d.margin, d.marginInc)));
+                      const plMaxNeg = Math.max(0, ...data.map(d => -Math.min(d.margin, d.marginInc)));
                       const plNegSteps = plMaxNeg > 0 ? 1 : 0;
                       const plStep = niceStep(Math.max(1e-9, plMaxPos / (AXIS_INTERVALS - plNegSteps), plMaxNeg));
                       const plTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => +((i - plNegSteps) * plStep).toPrecision(12));
@@ -648,7 +679,7 @@ const Dashboard = () => {
                           <div className="flex-1 w-full mt-3">
                             <ResponsiveContainer width="100%" height="100%">
                               {metric.pl ? (
-                                <ComposedChart data={data} margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
+                                <ComposedChart data={data} stackOffset="sign" margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
                                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
                                   <YAxis yAxisId="val" {...yAxisBase} tickMargin={4} tick={{ fontSize: 10, fill: '#64748b' }} width={40} domain={[plTicks[0], plTicks[AXIS_INTERVALS]]} ticks={plTicks} tickFormatter={axisFormatter('M')} />
@@ -656,8 +687,10 @@ const Dashboard = () => {
                                   <RechartsTooltip content={<MetricTooltip metricKey="margin" metricLabel="P/L" ratioLabel="% Margin" ratioColor={PL_COLORS.line} ratioLines={PL_LINES} data={data} />} cursor={{ fill: '#f8fafc' }} />
                                   <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder('margin')} />
                                   <ReferenceLine yAxisId="val" y={0} stroke="#0f172a" strokeWidth={1.5} />
-                                  <Bar yAxisId="val" dataKey="profit" name="Profit" stackId="pl" fill={PL_COLORS.profit} radius={[3, 3, 0, 0]} />
+                                  <Bar yAxisId="val" dataKey="profit" name="Profit" stackId="pl" fill={PL_COLORS.profit} />
                                   <Bar yAxisId="val" dataKey="loss" name="Loss" stackId="pl" fill={PL_COLORS.loss} radius={[0, 0, 3, 3]} />
+                                  {/* Segmen abu-abu incentive ditumpuk di atas Profit (tanpa penanda di legend) */}
+                                  <Bar yAxisId="val" dataKey="incSegment" name="P/L with Incentive" stackId="pl" fill={PL_COLORS.barInc} radius={[3, 3, 0, 0]} legendType="none" />
                                   <Line yAxisId="pct" type="linear" dataKey="marginLine" name="Without Incentive" stroke={PL_COLORS.lineNoInc} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                                   <Line yAxisId="pct" type="linear" dataKey="marginIncLine" name="With Incentive" stroke={PL_COLORS.line} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                                 </ComposedChart>
@@ -668,10 +701,10 @@ const Dashboard = () => {
                                   <YAxis yAxisId="vol" {...leftAxisProps} />
                                   <YAxis yAxisId="pct" {...rightAxisProps} />
                                   <RechartsTooltip content={<SalesVolumeTooltip />} cursor={{ fill: '#f8fafc' }} />
-                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder('salesVolume')} />
                                   <Bar yAxisId="vol" dataKey="salesDomestic" name="Domestic" stackId="sv" fill={SV_COLORS[principalName].domestic} />
                                   <Bar yAxisId="vol" dataKey="salesInternational" name="International" stackId="sv" fill={SV_COLORS[principalName].international} radius={[3, 3, 0, 0]} />
-                                  <Line yAxisId="pct" type="linear" dataKey="intlShare" name="Int'l %" stroke={SV_COLORS[principalName].line} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: SV_COLORS[principalName].line, strokeWidth: 0 }} activeDot={{ r: 4 }} />
+                                  <Line yAxisId="pct" type="linear" dataKey="intlShare" name="International %" stroke={SV_COLORS[principalName].line} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: SV_COLORS[principalName].line, strokeWidth: 0 }} activeDot={{ r: 4 }} />
                                 </ComposedChart>
                               ) : (
                                 <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>

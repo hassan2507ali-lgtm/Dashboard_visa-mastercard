@@ -60,7 +60,7 @@ const autoComparators = (sel) => {
 
 // Agregasi data per region + komponen income / cost (komponen diturunkan dari data dummy)
 const emptyBucket = () => ({ sv: 0, interchange: 0, mdr: 0, kurs: 0, serviceFee: 0, icFee: 0, incentive: 0 });
-// Kolom tabel: Principal "Both" -> per region (Domestic / Int'l), Visa / Mastercard -> per produk (Credit / Debit / Acquiring).
+// Kolom tabel: Principal "Both" -> per produk (Credit / Debit / Acquiring), Visa / Mastercard -> per region (Domestic / Int'l).
 // Jenis Produk memfilter data (mis. Credit Card -> hanya transaksi Credit).
 const REGION_COLUMNS = [
   { key: 'Domestic', label: 'Domestic', of: (item) => (item.region === 'International' ? null : 'Domestic') },
@@ -72,7 +72,7 @@ const PRODUCT_COLUMNS = [
   { key: 'Acquiring', label: 'Acquiring' },
 ].map(c => ({ ...c, of: (item) => (item.group === c.key ? c.key : null) }));
 const getColumns = (principal, product) => {
-  if (principal === 'Both') return REGION_COLUMNS;
+  if (principal !== 'Both') return REGION_COLUMNS;
   return product === 'All' ? PRODUCT_COLUMNS : PRODUCT_COLUMNS.filter(c => c.key === product);
 };
 
@@ -94,7 +94,7 @@ const aggregate = (db, { principal, product, start, end }) => {
     b.kurs += item.incomeKurs;
     b.serviceFee += item.costService;
     b.icFee += item.costInterchange;
-    b.incentive += item.principalCost * 0.8;
+    b.incentive += item.principalCost * 0.1; // Incentive Principal = 10% dari Cost (sama dengan chart Dashboard)
     res.days.add(item.date);
   });
   const total = emptyBucket();
@@ -199,7 +199,7 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
   const mainData = aggregate(db, { ...sel, ...mainPeriod });
   const compData = compPeriods.map(p => aggregate(db, { ...sel, ...p }));
   const hasData = mainData.days > 0;
-  // Kolom tabel per region (Both) atau per produk (Visa / Mastercard) + Total
+  // Kolom tabel per produk (Both) atau per region (Visa / Mastercard) + Total
   const columns = [...getColumns(sel.principal, sel.product), { key: 'Total', label: 'Total' }];
 
   const valueClass = (row, v) => (row.signColor && v < 0 ? 'text-rose-600' : 'text-slate-800');

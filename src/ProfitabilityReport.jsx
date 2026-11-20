@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { capPct } from './chartAxis';
-import { MONTHS, QUARTERS, periodEndMonth } from './reportPeriod';
+import { QUARTERS, MONTH_RANGES, monthRangeLength, periodEndMonth } from './reportPeriod';
 
 // ==========================================
 // LAPORAN PROFITABILITAS PRINCIPAL
@@ -18,39 +18,50 @@ const TYPE_OPTIONS = ['Cumulative', 'Position'];
 const pad = (n) => String(n).padStart(2, '0');
 const lastDayOf = (year, monthIdx) => new Date(year, monthIdx + 1, 0).getDate();
 
-// Rentang tanggal berdasarkan Show (Monthly/Quarterly), Tipe (Cumulative = YTD), Tahun, Bulan, Quarter
+// Rentang tanggal dari bulan awal s.d. bulan akhir (index bulan absolut: tahun * 12 + bulan, boleh lintas tahun)
+const rangePeriod = (startAbs, endAbs, label) => {
+  const sy = Math.floor(startAbs / 12), sm = startAbs % 12;
+  const ey = Math.floor(endAbs / 12), em = endAbs % 12;
+  const endDay = lastDayOf(ey, em);
+  return {
+    label,
+    start: `${sy}-${pad(sm + 1)}-01`,
+    end: `${ey}-${pad(em + 1)}-${pad(endDay)}`,
+    rangeText: `1 ${MONTHS_SHORT[sm]} ${sy} s.d. ${endDay} ${MONTHS_SHORT[em]} ${ey}`,
+  };
+};
+// Label rentang dalam satu tahun, mis. "Jan – Mar 2026"
+const rangeLabel = (startAbs, endAbs) => `${MONTHS_SHORT[startAbs % 12]} – ${MONTHS_SHORT[endAbs % 12]} ${Math.floor(endAbs / 12)}`;
+
+// Rentang tanggal berdasarkan Show, Tipe, Tahun, Bulan (rentang dari Januari) / Quarter
 const buildPeriod = ({ show, type, year, month, quarter }) => {
   const y = Number(year);
+  if (show === 'Monthly') {
+    // Bulan = rentang dari Januari (All = Jan s.d. Des, 3 Bulan = Jan s.d. Mar, dst.)
+    const startAbs = y * 12;
+    const endAbs = startAbs + monthRangeLength(month) - 1;
+    return rangePeriod(startAbs, endAbs, month === 'All' ? `${y}` : rangeLabel(startAbs, endAbs));
+  }
   const endMonth = periodEndMonth({ show, month, quarter });
-  const periodStartMonth = show === 'Monthly' ? endMonth : endMonth - 2;
-  const startMonth = type === 'Cumulative' ? 0 : periodStartMonth;
-  const endDay = lastDayOf(y, endMonth);
-  const base = show === 'Monthly' ? `${MONTHS_SHORT[endMonth]} ${y}` : `${quarter} ${y}`;
-  return {
-    label: type === 'Cumulative' ? `YTD ${base}` : base,
-    start: `${y}-${pad(startMonth + 1)}-01`,
-    end: `${y}-${pad(endMonth + 1)}-${pad(endDay)}`,
-    rangeText: `1 ${MONTHS_SHORT[startMonth]} ${y} s.d. ${endDay} ${MONTHS_SHORT[endMonth]} ${y}`,
-  };
+  const startMonth = type === 'Cumulative' ? 0 : endMonth - 2;
+  const base = `${quarter} ${y}`;
+  return rangePeriod(y * 12 + startMonth, y * 12 + endMonth, type === 'Cumulative' ? `YTD ${base}` : base);
 };
 
 // Pembanding (otomatis): (1) periode sebelumnya, (2) periode yang sama tahun lalu
 const autoComparators = (sel) => {
   const y = Number(sel.year);
-  let prev;
-  if (sel.show === 'Monthly') {
-    const m = MONTHS.indexOf(sel.month);
-    prev = m === 0 ? { year: y - 1, month: MONTHS[11], quarter: sel.quarter } : { year: y, month: MONTHS[m - 1], quarter: sel.quarter };
-  } else {
-    const q = QUARTERS.indexOf(sel.quarter);
-    prev = q === 0 ? { year: y - 1, month: sel.month, quarter: 'Q4' } : { year: y, month: sel.month, quarter: QUARTERS[q - 1] };
-  }
+  // Monthly (rentang dari Januari): pembanding = rentang yang sama tahun lalu
+  if (sel.show === 'Monthly') return [{ year: y - 1, month: sel.month, quarter: sel.quarter }];
+  const q = QUARTERS.indexOf(sel.quarter);
+  const prev = q === 0 ? { year: y - 1, month: sel.month, quarter: 'Q4' } : { year: y, month: sel.month, quarter: QUARTERS[q - 1] };
   return [prev, { year: y - 1, month: sel.month, quarter: sel.quarter }];
 };
 
 // Agregasi data per region + komponen income / cost (komponen diturunkan dari data dummy)
 const emptyBucket = () => ({ sv: 0, interchange: 0, mdr: 0, kurs: 0, serviceFee: 0, icFee: 0, incentive: 0 });
-// Kolom tabel: Jenis Produk "All" -> per region, produk tertentu -> per produk (Credit / Debit / Acquiring)
+// Kolom tabel: Principal "Both" -> per region (Domestic / Int'l), Visa / Mastercard -> per produk (Credit / Debit / Acquiring).
+// Jenis Produk memfilter data (mis. Credit Card -> hanya transaksi Credit).
 const REGION_COLUMNS = [
   { key: 'Domestic', label: 'Domestic', of: (item) => (item.region === 'International' ? null : 'Domestic') },
   { key: 'International', label: "Int'l", of: (item) => (item.region === 'International' ? 'International' : null) },
@@ -60,15 +71,19 @@ const PRODUCT_COLUMNS = [
   { key: 'Debit Card', label: 'Debit' },
   { key: 'Acquiring', label: 'Acquiring' },
 ].map(c => ({ ...c, of: (item) => (item.group === c.key ? c.key : null) }));
-const getColumns = (product) => (product === 'All' ? REGION_COLUMNS : PRODUCT_COLUMNS);
+const getColumns = (principal, product) => {
+  if (principal === 'Both') return REGION_COLUMNS;
+  return product === 'All' ? PRODUCT_COLUMNS : PRODUCT_COLUMNS.filter(c => c.key === product);
+};
 
 const aggregate = (db, { principal, product, start, end }) => {
-  const columns = getColumns(product);
+  const columns = getColumns(principal, product);
   const res = { days: new Set() };
   columns.forEach(c => { res[c.key] = emptyBucket(); });
   db.forEach(item => {
     if (principal === 'Both' ? !['Visa', 'Mastercard'].includes(item.principal) : item.principal !== principal) return;
     if (item.date < start || item.date > end) return;
+    if (product !== 'All' && item.group !== product) return;
     const segKey = columns.map(c => c.of(item)).find(Boolean);
     if (!segKey) return;
     const b = res[segKey];
@@ -184,8 +199,8 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
   const mainData = aggregate(db, { ...sel, ...mainPeriod });
   const compData = compPeriods.map(p => aggregate(db, { ...sel, ...p }));
   const hasData = mainData.days > 0;
-  // Kolom tabel per region (All) atau per produk (Credit / Debit / Acquiring) + Total
-  const columns = [...getColumns(sel.product), { key: 'Total', label: 'Total' }];
+  // Kolom tabel per region (Both) atau per produk (Visa / Mastercard) + Total
+  const columns = [...getColumns(sel.principal, sel.product), { key: 'Total', label: 'Total' }];
 
   const valueClass = (row, v) => (row.signColor && v < 0 ? 'text-rose-600' : 'text-slate-800');
   const renderVal = (row, v) => (row.pct ? formatPct(v) : formatAmount(v));
@@ -212,7 +227,7 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
             <FieldSelect label="Tipe" value={sel.type} onChange={set('type')} options={TYPE_OPTIONS} />
             <FieldSelect label="Tahun" value={sel.year} onChange={set('year')} options={years} />
             {isMonthly
-              ? <FieldSelect label="Bulan" value={sel.month} onChange={set('month')} options={MONTHS} />
+              ? <FieldSelect label="Bulan" value={sel.month} onChange={set('month')} options={MONTH_RANGES} />
               : <FieldSelect label="Quarter" value={sel.quarter} onChange={set('quarter')} options={QUARTERS} />}
           </div>
         </div>

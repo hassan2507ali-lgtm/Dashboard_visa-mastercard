@@ -34,9 +34,10 @@ const generateChartData = (scale = 1) => {
     const day = currentDate.getDate();
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-    // Dummy: Income & Cost dalam Rupiah
-    const incomeRaw = Math.floor((Math.random() * 40000000 + 20000000) * scale);
-    const costRaw = Math.floor((Math.random() * 25000000 + 5000000) * scale);
+    // Dummy: Income & Cost dalam Rupiah (harian). Skala dibuat supaya total per bulan
+    // Service Fee / Interchange Fee per principal di kisaran puluhan - ratusan Miliar.
+    const incomeRaw = Math.floor((Math.random() * 10e9 + 5e9) * scale);
+    const costRaw = Math.floor((Math.random() * 6e9 + 1.5e9) * scale);
     // Sales Volume: diatur supaya Cost / SV selalu 1,2% - 2,8% (maks 3%)
     const salesVolume = Math.floor(costRaw / (0.012 + Math.random() * 0.016));
 
@@ -81,12 +82,13 @@ const CHART_SECTIONS = [
 
 const PRINCIPAL_COLOR = { Visa: '#1e3a8a', Mastercard: '#ea580c' };
 
+// Format amount Rupiah: hanya T (Triliun) dan M (Miliar), mis. Rp 1,25 T / Rp 72,29 M / Rp 0,35 M
 const formatCurrency = (value) => {
-  if (value >= 1000000000000) return (value / 1000000000000).toFixed(2) + ' T';
-  if (value >= 1000000000) return (value / 1000000000).toFixed(2) + ' bn';
-  if (value >= 1000000) return (value / 1000000).toFixed(2) + ' M';
-  if (value >= 1000) return (value / 1000).toFixed(2) + ' Rb';
-  return value.toFixed(0);
+  const n = Number(value || 0);
+  const abs = Math.abs(n);
+  const [div, unit] = abs >= 1e12 ? [1e12, 'T'] : [1e9, 'M'];
+  const num = (abs / div).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${n < 0 ? '-' : ''}Rp ${num} ${unit}`;
 };
 
 // Default filter: awal tahun berjalan s/d hari ini
@@ -111,14 +113,11 @@ const VIEW_OPTIONS = {
 // KOMPONEN CHART 1 GARIS (gaya Dashboard) untuk Service Fee & Interchange Fee
 // Nilai garis mengikuti filter Category: Income -> Income, selain itu -> Cost
 // ==========================================
-// Label sumbu amount: ringkas, tanpa desimal berlebih (mis. 0, 250 Jt, 1,5 M)
+// Label sumbu amount: hanya T (Triliun) dan M (Miliar), mis. 0, 0,5 M, 12 M, 1,2 T
 const formatAxisAmount = (v) => {
   if (v === 0) return '0';
-  const fmt = (n) => n.toLocaleString('id-ID', { maximumFractionDigits: 1 });
-  if (v >= 1e9) return `${fmt(v / 1e9)} bn`;
-  if (v >= 1e6) return `${fmt(v / 1e6)} M`;
-  if (v >= 1e3) return `${fmt(v / 1e3)} Rb`;
-  return fmt(v);
+  const fmt = (n) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+  return Math.abs(v) >= 1e12 ? `${fmt(v / 1e12)} T` : `${fmt(v / 1e9)} M`;
 };
 
 // Warna line % (dibedakan dari warna bar)
@@ -136,7 +135,7 @@ const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
       <div className="flex items-center gap-2">
         <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: barColor }}></div>
         <span className="text-slate-600 font-medium">Amount {metricLabel}:</span>
-        <span className="font-bold text-slate-800">Rp {formatCurrency(row.value)}</span>
+        <span className="font-bold text-slate-800">{formatCurrency(row.value)}</span>
       </div>
       <div className="flex items-center gap-2">
         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lineColor }}></div>
@@ -323,7 +322,7 @@ const BillingSummaryCard = ({ principal, summary }) => {
   const pct = (n) => (totalCount ? (n / totalCount) * 100 : 0);
   const STATUS_COLOR = { New: NEW_COLOR, Existing: EXISTING_COLOR };
   const parts = SUMMARY_STATUSES.map(st => ({ label: st, ...summary[st], color: STATUS_COLOR[st] }));
-  const rp = (v) => `Rp ${formatCurrency(v)}`;
+  const rp = formatCurrency;
   const miniCards = [
     { label: 'Total Cost', ...summary.total, highlight: true },
     { label: 'Interchange Fee', ...summary.interchange },

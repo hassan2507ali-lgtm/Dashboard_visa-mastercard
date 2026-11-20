@@ -27,7 +27,7 @@ const PRINCIPAL_LIST = ['Visa', 'Mastercard'];
 const METRIC_LIST = [
   { key: 'salesVolume', label: 'Sales Volume' },
   { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'Income/SV', stacked: true },
-  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'Volume/Cost', stacked: true },
+  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'Cost/SV', stacked: true },
   { key: 'margin', label: 'P/L', ratioKey: 'marginLine', ratioLabel: '%Margin to Volume', pl: true },
 ];
 
@@ -57,8 +57,9 @@ const STACK_CONFIG = {
 const STACK_FIELDS = [...STACK_CONFIG.income, ...STACK_CONFIG.cost].map(c => c.field);
 const STACK_COLORS = {
   Visa: ['#06b6d4', '#6366f1', '#1e3a8a'],        // cyan, indigo, navy
-  Mastercard: ['#facc15', '#f97316', '#dc2626'],  // kuning, oranye, merah
 };
+// Bar Mastercard memakai warna yang sama dengan Visa
+STACK_COLORS.Mastercard = STACK_COLORS.Visa;
 // Legend mengikuti urutan konfigurasi (default Recharts mengurutkan alfabetis)
 const PL_LEGEND = ['Profit', 'Loss', ...PL_LINES.map(l => l.label)];
 const legendOrder = (metricKey) => {
@@ -79,28 +80,23 @@ const REGION_OPTIONS = ['Domestic', 'International'];
 // Warna bar Sales Volume (Domestic & International)
 const SV_COLORS = {
   Visa: { domestic: '#93c5fd', international: '#1e3a8a', line: '#f59e0b' },
-  Mastercard: { domestic: '#fdba74', international: '#c2410c', line: '#0f766e' },
+  Mastercard: { domestic: '#93c5fd', international: '#1e3a8a', line: '#0f766e' }, // bar sama dengan Visa
 };
 
-// Satuan ringkas Rupiah (dipakai di sumbu & angka utama kartu):
-// M = Juta / Million (10^6), B = Miliar / Billion (10^9), T = Triliun / Trillion (10^12). Satuan terkecil M.
-const UNIT_SCALES = [
-  { value: 1e12, suffix: 'T', label: 'Triliun' },
-  { value: 1e9, suffix: 'B', label: 'Miliar' },
-  { value: 1e6, suffix: 'M', label: 'Juta' },
-];
-const formatCompact = (v, digits = 2) => {
+// Satuan ringkas Rupiah (format Indonesia, dipakai di sumbu & angka utama kartu):
+// T = Triliun (10^12), M = Miliar (10^9). Sales Volume selalu Triliun, metric lain selalu Miliar.
+const UNIT_SCALES = { T: 1e12, M: 1e9 };
+const metricUnit = (metricKey) => (metricKey === 'salesVolume' ? 'T' : 'M');
+const formatCompact = (v, unit, digits = 2) => {
   const n = Number(v || 0);
-  const abs = Math.abs(n);
-  if (abs === 0) return '0';
-  const scale = UNIT_SCALES.find(s => abs >= s.value) || UNIT_SCALES[UNIT_SCALES.length - 1];
-  return `${(n / scale.value).toLocaleString('id-ID', { maximumFractionDigits: digits })} ${scale.suffix}`;
+  if (n === 0) return '0';
+  return `${(n / UNIT_SCALES[unit]).toLocaleString('id-ID', { maximumFractionDigits: digits })} ${unit}`;
 };
-// Label sumbu amount: ringkas (mis. 0, 500 M, 1,2 B)
-const formatAxisCompact = (v) => formatCompact(v, 1);
+// Label sumbu amount: ringkas (mis. 0, 50 M, 1,2 T)
+const axisFormatter = (unit) => (v) => formatCompact(v, unit, 1);
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const formatRupiah = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatValue(Math.abs(Number(val || 0)))}`;
-const formatRupiahCompact = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatCompact(Math.abs(Number(val || 0)))}`;
+const formatRupiahCompact = (val, unit) => `${Number(val) < 0 ? '-' : ''}Rp ${formatCompact(Math.abs(Number(val || 0)), unit)}`;
 
 // Tahun yang ditampilkan di chart & tahun pembanding untuk YoY
 const CURRENT_YEAR = 2026;
@@ -381,11 +377,7 @@ const Dashboard = () => {
   // 4. HANDLERS & CONFIGURATIONS
   // ==========================================
   const handleApply = () => setAppliedFilters({ ...filters });
-  // Filter Jenis disembunyikan saat Accumulative (filtering jenis ada di tabel laporan)
-  const hideJenisFilter = filters.periode === 'Accumulative';
-  const handlePeriodeChange = (periode) => {
-    setFilters(prev => ({ ...prev, periode, jenis: periode === 'Accumulative' ? 'All' : prev.jenis }));
-  };
+  const handlePeriodeChange = (periode) => setFilters(prev => ({ ...prev, periode }));
   const handleReset = () => {
     setFilters({ ...DEFAULT_FILTERS });
     setAppliedFilters({ ...DEFAULT_FILTERS });
@@ -547,7 +539,7 @@ const Dashboard = () => {
           <header className="flex flex-col xl:flex-row xl:justify-end items-start xl:items-center mb-6 w-full gap-4 border-b border-slate-200/60 pb-6 pt-2">
             <div className="flex flex-wrap items-end justify-end gap-3 w-full xl:w-auto order-1 xl:order-2" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Show As</label>
                 <div className="relative">
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.periode} onChange={(e) => handlePeriodeChange(e.target.value)}>
                     {PERIODE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -555,19 +547,6 @@ const Dashboard = () => {
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
               </div>
-
-              {!hideJenisFilter && (
-              <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Show As</label>
-                <div className="relative">
-                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.jenis} onChange={(e) => setFilters({...filters, jenis: e.target.value})}>
-                    <option value="All">All</option>
-                    {JENIS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
-                </div>
-              </div>
-              )}
 
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Domestic / International</label>
@@ -613,7 +592,7 @@ const Dashboard = () => {
                       const pctTicks = buildPctTicks(lineLo, lineHi);
                       const amtTicks = buildAmountTicksBelowLine(data.map(d => d[metric.key]), lineVals, pctTicks);
                       const ratioColor = SV_COLORS[principalName].line;
-                      const leftAxisProps = { ...yAxisBase, tick: { fontSize: 10, fill: '#64748b' }, width: 46, domain: [0, amtTicks[AXIS_INTERVALS]], ticks: amtTicks, tickFormatter: formatAxisCompact };
+                      const leftAxisProps = { ...yAxisBase, tick: { fontSize: 10, fill: '#64748b' }, width: 46, domain: [0, amtTicks[AXIS_INTERVALS]], ticks: amtTicks, tickFormatter: axisFormatter(metricUnit(metric.key)) };
                       const rightAxisProps = { ...yAxisBase, orientation: 'right', tick: { fontSize: 10, fill: ratioColor, fontWeight: 600 }, width: 44, domain: [pctTicks[0], pctTicks[AXIS_INTERVALS]], ticks: pctTicks, tickFormatter: formatPctTick };
                       const last = data[data.length - 1];
                       const prev = data[data.length - 2];
@@ -648,7 +627,7 @@ const Dashboard = () => {
                             <div className="min-w-0">
                               <p className="text-[13px] font-bold text-slate-700">{metric.label}</p>
                               <div className="flex items-baseline gap-1.5 mt-1">
-                                <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap" title={formatRupiah(lastVal)}>{formatRupiahCompact(lastVal)}</p>
+                                <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap" title={formatRupiah(lastVal)}>{formatRupiahCompact(lastVal, metricUnit(metric.key))}</p>
                                 {amountPct != null && (
                                   <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: ratioColor }}>{formatValue(amountPct)}%</span>
                                 )}
@@ -672,7 +651,7 @@ const Dashboard = () => {
                                 <ComposedChart data={data} margin={{ top: 16, right: 4, bottom: 0, left: -8 }}>
                                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-                                  <YAxis yAxisId="val" {...yAxisBase} tickMargin={4} tick={{ fontSize: 10, fill: '#64748b' }} width={40} domain={[plTicks[0], plTicks[AXIS_INTERVALS]]} ticks={plTicks} tickFormatter={formatAxisCompact} />
+                                  <YAxis yAxisId="val" {...yAxisBase} tickMargin={4} tick={{ fontSize: 10, fill: '#64748b' }} width={40} domain={[plTicks[0], plTicks[AXIS_INTERVALS]]} ticks={plTicks} tickFormatter={axisFormatter('M')} />
                                   <YAxis yAxisId="pct" orientation="right" hide domain={plPctDomain} allowDataOverflow />
                                   <RechartsTooltip content={<MetricTooltip metricKey="margin" metricLabel="P/L" ratioLabel="% Margin" ratioColor={PL_COLORS.line} ratioLines={PL_LINES} data={data} />} cursor={{ fill: '#f8fafc' }} />
                                   <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder('margin')} />

@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, CreditCard, Book, FileText, User, ChevronUp, ChevronDown, LogOut,
-  Filter, X, ChevronLeft, ChevronRight
+  Filter, X, ChevronLeft, ChevronRight, Download
 } from 'lucide-react';
+import { downloadCsv, downloadXlsx } from './exportFile';
 
 // === IMPORT GAMBAR LOGO DARI FOLDER SRC ===
 import LogoDanantara from './mandiri.png';
@@ -155,6 +156,25 @@ const DetailBilling = () => {
     { header: 'PRINCIPAL SUB CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalSubCategory },
   ];
 
+  // ==========================================
+  // DOWNLOAD PER BARIS (CSV / XLSX) — nilai mentah, bukan teks yang sudah diformat
+  // ==========================================
+  const EXPORT_FIELDS = [
+    ['Principal', 'principal'], ['Type', 'jenisTransaksi'], ['Region', 'region'], ['Billing Line', 'billingLine'],
+    ['Rate', 'rate'], ['Unit', 'unit'], ['Amount', 'total'], ['Description', 'description'], ['Tagging', 'tagging'],
+    ['Group', 'group'], ['Channel', 'channel'], ['Status', 'status'], ['Tanggal', 'tanggal'], ['ICA', 'ica'],
+    ['Eqv IDR', 'eqvIdr'], ['Principal Fee Type', 'principalFeeType'], ['Principal Category', 'principalCategory'],
+    ['Principal Sub Category', 'principalSubCategory'],
+  ];
+  const downloadRow = (row, idx, format) => {
+    const rows = [EXPORT_FIELDS.map(([h]) => h), EXPORT_FIELDS.map(([, k]) => row[k] ?? '')];
+    const name = `billing_${row.principal}_${row.billingLine}_${row.tanggal || ''}_${row.id ?? idx}`
+      .replace(/[^A-Za-z0-9_-]+/g, '-').replace(/-+/g, '-');
+    if (format === 'csv') downloadCsv(rows, `${name}.csv`);
+    else downloadXlsx(rows, `${name}.xlsx`, 'Billing');
+  };
+  const dlBtn = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-bold transition-colors';
+
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative">
 
@@ -173,9 +193,9 @@ const DetailBilling = () => {
           </button>
 
           <nav className="flex flex-col gap-8 items-center">
-            <button onClick={() => navigate('/')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Dashboard"><CreditCard size={24} strokeWidth={1.5} /></button>
-            <button onClick={() => navigate('/detail-cost')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Detail Cost"><Book size={24} strokeWidth={1.5} /></button>
-            <button className="text-blue-600 transition-colors" title="Detail Billing"><FileText size={24} strokeWidth={1.5} /></button>
+            <button onClick={() => navigate('/')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Main Dashboard"><CreditCard size={24} strokeWidth={1.5} /></button>
+            <button onClick={() => navigate('/detail-cost')} className="text-slate-400 hover:text-blue-600 transition-colors" title="Performance Monitoring"><Book size={24} strokeWidth={1.5} /></button>
+            <button className="text-blue-600 transition-colors" title="Monitoring fee"><FileText size={24} strokeWidth={1.5} /></button>
           </nav>
         </div>
         
@@ -283,6 +303,7 @@ const DetailBilling = () => {
                         {col.header}
                       </th>
                     ))}
+                    <th className="sticky right-0 z-10 bg-[#f8fafc] py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-l border-slate-200/80 text-center">DOWNLOAD</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -307,11 +328,22 @@ const DetailBilling = () => {
                         {TABLE_COLUMNS.map(col => (
                           <td key={col.header} className={col.className}>{col.render(row)}</td>
                         ))}
+                        {/* Kolom download menempel di kanan walau tabel di-scroll horizontal */}
+                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-4 border-l border-slate-100">
+                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                            <button onClick={() => downloadRow(row, idx, 'csv')} className={`${dlBtn} border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100`} title="Download baris ini (CSV)">
+                              <Download size={12} /> CSV
+                            </button>
+                            <button onClick={() => downloadRow(row, idx, 'xlsx')} className={`${dlBtn} border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100`} title="Download baris ini (XLSX)">
+                              <Download size={12} /> XLSX
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={TABLE_COLUMNS.length + (billingMode !== 'All' ? 1 : 0)} className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan={TABLE_COLUMNS.length + 1 + (billingMode !== 'All' ? 1 : 0)} className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

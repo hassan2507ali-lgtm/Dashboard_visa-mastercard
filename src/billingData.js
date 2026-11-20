@@ -23,9 +23,6 @@ const NEW_BILLING_TEMPLATES = [
   { jenis: 'Service Fee', tagging: 'Weekly', principal: 'Mastercard', group: '-', status: 'Current Billing', ica: '12375', billingLine: '2LS4205', desc: 'Decision Intelligence Scoring Fee', feeType: 'Issuer Fees', category: 'Fraud & Security', subCategory: 'Risk Scoring' },
 ];
 
-// Tarif pajak dummy untuk kolom TAX OF (PPN 11% dari Eqv IDR)
-export const TAX_RATE = 0.11;
-
 const generateTableData = () => {
   const data = [];
   const months = ['Januari 2026', 'Februari 2026', 'Maret 2026', 'April 2026', 'Mei 2026', 'Juni 2026'];
@@ -59,7 +56,6 @@ const generateTableData = () => {
       description: template.desc,
       total: rawAmount,
       eqvIdr: eqvIdr,
-      taxOf: eqvIdr * TAX_RATE, // nominal pajak (Rp) dari Eqv IDR
       principalFeeType: template.feeType,
       principalCategory: template.category,
       principalSubCategory: template.subCategory
@@ -83,7 +79,6 @@ const generateTableData = () => {
       description: template.desc,
       total: rawAmount,
       eqvIdr: rawAmount,
-      taxOf: rawAmount * TAX_RATE,
       principalFeeType: template.feeType,
       principalCategory: template.category,
       principalSubCategory: template.subCategory

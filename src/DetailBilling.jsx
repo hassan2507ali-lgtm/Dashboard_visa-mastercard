@@ -127,7 +127,7 @@ const DetailBilling = () => {
   // ==========================================
   // ==========================================
   // KONFIGURASI KOLOM TABEL (urutan tampil di layar)
-  // Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Tax Of, Description, Tagging
+  // Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Description, Tagging
   // ==========================================
   const TABLE_COLUMNS = [
     { header: 'PRINCIPAL', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.principal },
@@ -141,7 +141,6 @@ const DetailBilling = () => {
     { header: 'RATE', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.rate) },
     { header: 'UNIT', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => r.unit.toLocaleString('id-ID') },
     { header: 'AMOUNT', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.total) },
-    { header: 'TAX OF', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.taxOf) },
     { header: 'DESCRIPTION', className: 'py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate', render: r => <span title={r.description}>{r.description}</span> },
     { header: 'TAGGING', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.tagging },
     // Kolom lainnya (tetap ditampilkan)
@@ -163,7 +162,7 @@ const DetailBilling = () => {
   // ==========================================
   const EXPORT_FIELDS = [
     ['Principal', 'principal'], ['Type', 'jenisTransaksi'], ['Region', 'region'], ['Billing Line', 'billingLine'],
-    ['Rate', 'rate'], ['Unit', 'unit'], ['Amount', 'total'], ['Tax Of', 'taxOf'], ['Description', 'description'], ['Tagging', 'tagging'],
+    ['Rate', 'rate'], ['Unit', 'unit'], ['Amount', 'total'], ['Description', 'description'], ['Tagging', 'tagging'],
     ['Group', 'group'], ['Channel', 'channel'], ['Status', 'status'], ['Tanggal', 'tanggal'], ['ICA', 'ica'],
     ['Eqv IDR', 'eqvIdr'], ['Principal Fee Type', 'principalFeeType'], ['Principal Category', 'principalCategory'],
     ['Principal Sub Category', 'principalSubCategory'],

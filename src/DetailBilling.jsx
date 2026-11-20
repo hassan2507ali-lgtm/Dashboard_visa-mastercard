@@ -62,6 +62,7 @@ const DetailBilling = () => {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isDownloadOpen, setIsDownloadOpen] = useState(false);
 
   // ==========================================
   // LOGIKA FILTERING & RESET HALAMAN TABEL
@@ -157,7 +158,7 @@ const DetailBilling = () => {
   ];
 
   // ==========================================
-  // DOWNLOAD PER BARIS (CSV / XLSX) — nilai mentah, bukan teks yang sudah diformat
+  // DOWNLOAD DATA TABEL SESUAI FILTER (CSV / XLSX) — nilai mentah, bukan teks yang sudah diformat
   // ==========================================
   const EXPORT_FIELDS = [
     ['Principal', 'principal'], ['Type', 'jenisTransaksi'], ['Region', 'region'], ['Billing Line', 'billingLine'],
@@ -166,14 +167,16 @@ const DetailBilling = () => {
     ['Eqv IDR', 'eqvIdr'], ['Principal Fee Type', 'principalFeeType'], ['Principal Category', 'principalCategory'],
     ['Principal Sub Category', 'principalSubCategory'],
   ];
-  const downloadRow = (row, idx, format) => {
-    const rows = [EXPORT_FIELDS.map(([h]) => h), EXPORT_FIELDS.map(([, k]) => row[k] ?? '')];
-    const name = `billing_${row.principal}_${row.billingLine}_${row.tanggal || ''}_${row.id ?? idx}`
-      .replace(/[^A-Za-z0-9_-]+/g, '-').replace(/-+/g, '-');
+  const handleDownload = (format) => {
+    setIsDownloadOpen(false);
+    const rows = [
+      EXPORT_FIELDS.map(([h]) => h),
+      ...filteredTableData.map(row => EXPORT_FIELDS.map(([, k]) => row[k] ?? '')),
+    ];
+    const name = `detail_billing_${new Date().toISOString().slice(0, 10)}`;
     if (format === 'csv') downloadCsv(rows, `${name}.csv`);
-    else downloadXlsx(rows, `${name}.xlsx`, 'Billing');
+    else downloadXlsx(rows, `${name}.xlsx`, 'Detail Billing');
   };
-  const dlBtn = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-bold transition-colors';
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-800 overflow-hidden relative">
@@ -270,7 +273,7 @@ const DetailBilling = () => {
               </div>
 
               {/* Grid filter berlabel, rapi di semua ukuran layar */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-3 items-end">
+              <div className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-11 gap-3 items-end">
                 {TABLE_FILTER_FIELDS.map(field => (
                   <div key={field.key} className="flex flex-col gap-1 min-w-0">
                     <label className="text-[11px] font-semibold text-slate-500 leading-tight">{field.label}</label>
@@ -287,6 +290,30 @@ const DetailBilling = () => {
                     </div>
                   </div>
                 ))}
+
+                {/* Dropdown Download (di samping Sort): unduh semua data sesuai filter */}
+                <div className="flex flex-col gap-1 min-w-0">
+                  <label className="text-[11px] font-semibold text-slate-500 leading-tight">Download</label>
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsDownloadOpen(o => !o)}
+                      disabled={filteredTableData.length === 0}
+                      className="w-full flex items-center justify-between gap-1.5 pl-3 pr-2.5 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <span className="flex items-center gap-1.5"><Download size={12} /> Export</span>
+                      <ChevronDown size={12} className={`text-slate-400 transition-transform ${isDownloadOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isDownloadOpen && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setIsDownloadOpen(false)}></div>
+                        <div className="absolute right-0 mt-1 w-full min-w-[120px] bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
+                          <button onClick={() => handleDownload('csv')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">CSV</button>
+                          <button onClick={() => handleDownload('xlsx')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 border-t border-slate-100">XLSX</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -303,7 +330,6 @@ const DetailBilling = () => {
                         {col.header}
                       </th>
                     ))}
-                    <th className="sticky right-0 z-10 bg-[#f8fafc] py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-l border-slate-200/80 text-center">DOWNLOAD</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -328,22 +354,11 @@ const DetailBilling = () => {
                         {TABLE_COLUMNS.map(col => (
                           <td key={col.header} className={col.className}>{col.render(row)}</td>
                         ))}
-                        {/* Kolom download menempel di kanan walau tabel di-scroll horizontal */}
-                        <td className="sticky right-0 z-10 bg-white group-hover:bg-slate-50 py-3 px-4 border-l border-slate-100">
-                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <button onClick={() => downloadRow(row, idx, 'csv')} className={`${dlBtn} border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100`} title="Download baris ini (CSV)">
-                              <Download size={12} /> CSV
-                            </button>
-                            <button onClick={() => downloadRow(row, idx, 'xlsx')} className={`${dlBtn} border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100`} title="Download baris ini (XLSX)">
-                              <Download size={12} /> XLSX
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={TABLE_COLUMNS.length + 1 + (billingMode !== 'All' ? 1 : 0)} className="py-10 text-center text-slate-400 font-medium text-[13px]">
+                      <td colSpan={TABLE_COLUMNS.length + (billingMode !== 'All' ? 1 : 0)} className="py-10 text-center text-slate-400 font-medium text-[13px]">
                         Tidak ada data yang sesuai dengan filter yang dipilih.
                       </td>
                     </tr>

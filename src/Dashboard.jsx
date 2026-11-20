@@ -62,21 +62,20 @@ const SV_COLORS = {
 };
 
 // Satuan ringkas Rupiah (dipakai di sumbu & angka utama kartu):
-// K = Ribu (10^3), M = Juta / Million (10^6), B = Miliar / Billion (10^9), T = Triliun / Trillion (10^12)
+// M = Juta / Million (10^6), B = Miliar / Billion (10^9), T = Triliun / Trillion (10^12). Satuan terkecil M.
 const UNIT_SCALES = [
   { value: 1e12, suffix: 'T', label: 'Triliun' },
   { value: 1e9, suffix: 'B', label: 'Miliar' },
   { value: 1e6, suffix: 'M', label: 'Juta' },
-  { value: 1e3, suffix: 'K', label: 'Ribu' },
 ];
 const formatCompact = (v, digits = 2) => {
   const n = Number(v || 0);
   const abs = Math.abs(n);
-  const scale = UNIT_SCALES.find(s => abs >= s.value);
-  if (!scale) return n.toLocaleString('id-ID', { maximumFractionDigits: digits });
+  if (abs === 0) return '0';
+  const scale = UNIT_SCALES.find(s => abs >= s.value) || UNIT_SCALES[UNIT_SCALES.length - 1];
   return `${(n / scale.value).toLocaleString('id-ID', { maximumFractionDigits: digits })} ${scale.suffix}`;
 };
-// Label sumbu amount: ringkas (mis. 0, 2,5 K, 3 M, 1,2 B)
+// Label sumbu amount: ringkas (mis. 0, 500 M, 1,2 B)
 const formatAxisCompact = (v) => formatCompact(v, 1);
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const formatRupiah = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatValue(Math.abs(Number(val || 0)))}`;
@@ -85,6 +84,9 @@ const formatRupiahCompact = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatCo
 // Tahun yang ditampilkan di chart & tahun pembanding untuk YoY
 const CURRENT_YEAR = 2026;
 const PREV_YEAR = CURRENT_YEAR - 1;
+
+// Skala nominal dummy (Rp): cost/income per transaksi ±2-5 Juta, akumulasi bulanan Sales Volume puluhan Miliar
+const DUMMY_SCALE = 1e6;
 
 // ==========================================
 // 1. GENERATE DUMMY DATABASE MASIF
@@ -116,13 +118,13 @@ const generateDummyData = () => {
 
       const yearFactor = currentDate.getFullYear() === PREV_YEAR ? 0.92 : 1; // tahun lalu sedikit lebih kecil
       const baseCost = (Math.random() * 3 + 2) * wave * yearFactor; 
-      const principalCost = Number(baseCost.toFixed(3));
+      const principalCost = Math.round(baseCost * DUMMY_SCALE);
       // SV dibuat jauh lebih besar dari cost -> Cost/SV ±1,1-1,8%, Income/SV maks ±2,8% (semua rasio < 3%)
-      const salesVolume = Number((principalCost * (55 + Math.random() * 35)).toFixed(0));
+      const salesVolume = Math.round(principalCost * (55 + Math.random() * 35));
       
       // Rasio income/cost naik-turun per bulan -> sebagian bulan profit, sebagian loss (untuk chart P/L)
       const incomeRatio = 1.05 + Math.sin(monthIndex * 2.2) * 0.25 + Math.random() * 0.1;
-      const income = Number((principalCost * incomeRatio).toFixed(3));
+      const income = Math.round(principalCost * incomeRatio);
 
       const costRateBase = 0.038 + (wave - 1.2) * 0.005;
       const costRate = Number((costRateBase + (Math.random() * 0.002 - 0.001)).toFixed(4));
@@ -376,7 +378,7 @@ const Dashboard = () => {
         {changePct !== null && (
           <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-3">
             <span className="text-slate-500 font-medium">vs sebelumnya</span>
-            <span className={`font-bold ${changeColor}`}>{isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(1)}%</span>
+            <span className={`font-bold ${changeColor}`}>{isUp === goodWhenUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(1)}%</span>
           </div>
         )}
       </div>
@@ -525,14 +527,6 @@ const Dashboard = () => {
             {/* LAPORAN PROFITABILITAS PRINCIPAL (di atas grid Visa) — muncul jika tombol Mode di sidebar ON */}
             {reportActive && <ProfitabilityReport db={DUMMY_DB} sel={reportSel} onChange={setReportSel} />}
 
-            {/* Keterangan satuan Rupiah */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 bg-white rounded-xl border border-slate-200/60 px-4 py-2">
-              <span className="font-semibold text-slate-700">Satuan (Rp):</span>
-              {[...UNIT_SCALES].reverse().map(s => (
-                <span key={s.suffix}><b className="text-slate-700">{s.suffix}</b> = {s.label} ({s.value.toLocaleString('id-ID')})</span>
-              ))}
-            </div>
-
             {Object.keys(dashboardData.trendData).length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/60 p-10 text-center text-[13px] text-slate-400">Tidak ada data untuk filter ini.</div>
             )}
@@ -581,21 +575,29 @@ const Dashboard = () => {
                       const plTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => +((i - plNegSteps) * plStep).toPrecision(12));
                       const plPctTop = Math.max(0.01, ...data.map(d => d.marginLine)) * 1.3;
                       const plPctDomain = [-plPctTop * plNegSteps / (AXIS_INTERVALS - plNegSteps), plPctTop];
-                      const changeColor = (pct) => ((pct >= 0) === goodWhenUp ? 'text-emerald-500' : 'text-rose-500');
+                      // Hijau = panah ke atas, merah = panah ke bawah
+                      const isGoodChange = (pct) => (pct >= 0) === goodWhenUp;
+                      // Persentase di samping amount: SV -> porsi International, lainnya -> rasio terhadap Sales Volume
+                      const amountPct = last ? (isSV ? last.intlShare : metric.pl ? last.marginRatio : last[metric.ratioKey]) : null;
 
                       return (
                         <div key={metric.key} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/60 flex flex-col h-[300px]">
-                          <div className="flex justify-between items-start">
-                            <div>
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="min-w-0">
                               <p className="text-[13px] font-bold text-slate-700">{metric.label}</p>
-                              <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1" title={formatRupiah(lastVal)}>{formatRupiahCompact(lastVal)}</p>
+                              <div className="flex items-baseline gap-1.5 mt-1">
+                                <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap" title={formatRupiah(lastVal)}>{formatRupiahCompact(lastVal)}</p>
+                                {amountPct != null && (
+                                  <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: ratioColor }}>{formatValue(amountPct)}%</span>
+                                )}
+                              </div>
                               <p className="text-[10px] text-slate-400">Periode - {dashboardData.periodLabel}</p>
                             </div>
                             {changeItems.length > 0 && (
-                              <div className="flex gap-3 text-right">
+                              <div className="flex gap-3 text-right shrink-0 pr-3">
                                 {changeItems.map(c => (
                                   <div key={c.label}>
-                                    <p className={`text-[13px] font-bold ${changeColor(c.pct)}`}>{c.pct >= 0 ? '▲' : '▼'} {Math.abs(c.pct).toFixed(1)}%</p>
+                                    <p className={`text-[13px] font-bold whitespace-nowrap ${isGoodChange(c.pct) ? 'text-emerald-500' : 'text-rose-500'}`}>{isGoodChange(c.pct) ? '▲' : '▼'} {Math.abs(c.pct).toFixed(1)}%</p>
                                     <p className="text-[10px] text-slate-400">{c.label}</p>
                                   </div>
                                 ))}

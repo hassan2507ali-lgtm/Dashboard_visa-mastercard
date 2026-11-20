@@ -10,11 +10,11 @@ import {
 // RECHARTS UNTUK LINE CHART PER PRINCIPAL
 import {
   Line, Bar, ComposedChart, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine, LabelList
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine
 } from 'recharts';
 import ProfitabilityReport from './ProfitabilityReport';
 import { defaultReportSel, periodEndMonth, MONTHS, QUARTERS } from './reportPeriod';
-import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, niceStep, capPct } from './chartAxis';
+import { AXIS_INTERVALS, buildPctTicks, buildAmountTicksBelowLine, formatPctTick, yAxisBase, niceStep, capPct } from './chartAxis';
 
 // IMPORT GAMBAR LOGO
 import LogoMandiri from  './danatara.png';
@@ -26,23 +26,44 @@ import LogoDanantara from './mandiri.png';
 const PRINCIPAL_LIST = ['Visa', 'Mastercard'];
 const METRIC_LIST = [
   { key: 'salesVolume', label: 'Sales Volume' },
-  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'SV/Income', stacked: true },
-  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'SV/Cost', stacked: true },
+  { key: 'income', label: 'Income', ratioKey: 'incomeRatio', ratioLabel: 'Income/SV', stacked: true },
+  { key: 'cost', label: 'Cost', ratioKey: 'costRatio', ratioLabel: 'Volume/Cost', stacked: true },
   { key: 'margin', label: 'P/L', ratioKey: 'marginLine', ratioLabel: '%Margin to Volume', pl: true },
 ];
 
-// Warna chart P/L: bar Profit (hijau), Loss (merah), line %Margin to Volume (biru)
-const PL_COLORS = { profit: '#22c55e', loss: '#ef4444', line: '#3b82f6' };
-
-// Bar Income & Cost ditumpuk (stacked) per group: Debit / Credit / Acquiring
-const STACK_GROUPS = [
-  { group: 'Debit Card', suffix: 'Debit', label: 'Debit' },
-  { group: 'Credit Card', suffix: 'Credit', label: 'Credit' },
-  { group: 'Acquiring', suffix: 'Acquiring', label: 'Acquiring' },
+// Warna chart P/L: bar Profit (hijau), Loss (merah), line %Margin with incentive (biru) & without incentive (abu)
+const PL_COLORS = { profit: '#22c55e', loss: '#ef4444', line: '#3b82f6', lineNoInc: '#94a3b8' };
+// Incentive Principal = 80% dari Cost (sama dengan Laporan Profitabilitas)
+const INCENTIVE_RATE = 0.8;
+// Rincian line % Margin di chart P/L (urutan = urutan di tooltip)
+const PL_LINES = [
+  { key: 'marginIncLine', label: 'With Incentive', color: PL_COLORS.line },
+  { key: 'marginLine', label: 'Without Incentive', color: PL_COLORS.lineNoInc },
 ];
+
+// Bar Income & Cost ditumpuk (stacked) per komponen (sesuai format Laporan Profitabilitas).
+// Urutan = urutan penanda (legend) & tumpukan dari bawah. color = index di STACK_COLORS.
+const STACK_CONFIG = {
+  income: [
+    { field: 'incomeInterchange', label: 'Interchange Fee & ATM', color: 2 },
+    { field: 'incomeMdr', label: 'MDR', color: 1 },
+    { field: 'incomeKurs', label: 'Kurs', color: 0 },
+  ],
+  cost: [
+    { field: 'costService', label: 'Service Fee', color: 2 },
+    { field: 'costInterchange', label: 'Interchange Fee', color: 0 },
+  ],
+};
+const STACK_FIELDS = [...STACK_CONFIG.income, ...STACK_CONFIG.cost].map(c => c.field);
 const STACK_COLORS = {
   Visa: ['#06b6d4', '#6366f1', '#1e3a8a'],        // cyan, indigo, navy
   Mastercard: ['#facc15', '#f97316', '#dc2626'],  // kuning, oranye, merah
+};
+// Legend mengikuti urutan konfigurasi (default Recharts mengurutkan alfabetis)
+const PL_LEGEND = ['Profit', 'Loss', ...PL_LINES.map(l => l.label)];
+const legendOrder = (metricKey) => {
+  const names = metricKey === 'margin' ? PL_LEGEND : STACK_CONFIG[metricKey].map(c => c.label);
+  return (item) => { const i = names.indexOf(item.value); return i === -1 ? names.length : i; };
 };
 
 // Filter jenis transaksi -> mapping ke field `group` di data
@@ -85,12 +106,37 @@ const formatRupiahCompact = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatCo
 const CURRENT_YEAR = 2026;
 const PREV_YEAR = CURRENT_YEAR - 1;
 
-// Skala nominal dummy (Rp): cost/income per transaksi ±2-5 Juta, akumulasi bulanan Sales Volume puluhan Miliar
-const DUMMY_SCALE = 1e6;
-
 // ==========================================
 // 1. GENERATE DUMMY DATABASE MASIF
+// Skala bulanan per principal: Sales Volume ±2-5 T, Income & Cost puluhan B, P/L ratusan M - belasan B.
+// Semua rasio terhadap Sales Volume tetap < 3%.
 // ==========================================
+const SV_PER_TRX = 2.2e10; // rata-rata Sales Volume per transaksi dummy (Rp)
+const PRINCIPAL_SCALE = { Visa: 1, Mastercard: 0.8, Others: 0.35 };
+// Musiman (Jan..Des): Jan sepi, Ramadan/Lebaran (Mar-Apr) & akhir tahun (Des) ramai
+const SEASONALITY = [0.88, 0.92, 1.08, 1.12, 0.97, 0.98, 1.02, 1.0, 0.97, 1.01, 1.05, 1.18];
+const rand = (min, max) => min + Math.random() * (max - min);
+
+// Profil per principal per bulan (dibuat sekali lalu di-cache) supaya tiap bulan punya karakter sendiri
+const monthProfiles = {};
+const getMonthProfile = (principal, year, monthIndex) => {
+  const key = `${principal}-${year}-${monthIndex}`;
+  if (!monthProfiles[key]) {
+    const monthsSinceStart = (year - PREV_YEAR) * 12 + monthIndex;
+    monthProfiles[key] = {
+      // tren tumbuh ±1%/bulan x musiman x guncangan acak bulanan
+      svFactor: PRINCIPAL_SCALE[principal] * (1 + 0.01 * monthsSinceStart) * SEASONALITY[monthIndex] * rand(0.9, 1.1),
+      intlShare: rand(0.3, 0.38),
+      costToSv: rand(0.011, 0.018),                                        // Cost / SV 1,1% - 1,8% (Income / SV maks ±2,9%)
+      incomeRatio: 1.08 + Math.sin(monthIndex * 2.2 + year) * 0.28 + rand(-0.05, 0.05), // Income / Cost -> ada bulan profit & loss
+      kursShare: rand(0.4, 0.6),     // porsi Kurs di income transaksi internasional (ikut volatilitas kurs)
+      mdrShare: rand(0.18, 0.3),     // porsi MDR di income
+      serviceShare: rand(0.58, 0.75) // porsi Service Fee di cost
+    };
+  }
+  return monthProfiles[key];
+};
+
 const generateDummyData = () => {
   const data = [];
   // Data mulai tahun sebelumnya supaya YoY (Year on Year) bisa dihitung
@@ -101,30 +147,34 @@ const generateDummyData = () => {
   while (currentDate <= endDate) {
     const numTrx = Math.floor(Math.random() * 10) + 8; 
     const monthIndex = currentDate.getMonth();
+    const year = currentDate.getFullYear();
     const wave = Math.sin(monthIndex * 0.8) * 0.4 + 1.2; 
 
     for(let j=0; j < numTrx; j++) {
       const typeRand = Math.random();
       const type = typeRand > 0.55 ? 'Visa' : (typeRand > 0.15 ? 'Mastercard' : 'Others');
+      const prof = getMonthProfile(type, year, monthIndex);
       
       const groupRand = Math.random();
       let groupName = groupRand > 0.4 ? 'Acquiring' : (groupRand > 0.2 ? 'Credit Card' : 'Debit Card');
 
-      const region = Math.random() > 0.3 ? 'Domestic' : 'International';
+      const region = Math.random() > prof.intlShare ? 'Domestic' : 'International';
       const channelRand = Math.random();
       const channel = channelRand > 0.5 ? 'CP' : (channelRand > 0.2 ? 'CNP' : 'ATM');
 
-      const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+      const dateString = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
 
-      const yearFactor = currentDate.getFullYear() === PREV_YEAR ? 0.92 : 1; // tahun lalu sedikit lebih kecil
-      const baseCost = (Math.random() * 3 + 2) * wave * yearFactor; 
-      const principalCost = Math.round(baseCost * DUMMY_SCALE);
-      // SV dibuat jauh lebih besar dari cost -> Cost/SV ±1,1-1,8%, Income/SV maks ±2,8% (semua rasio < 3%)
-      const salesVolume = Math.round(principalCost * (55 + Math.random() * 35));
-      
-      // Rasio income/cost naik-turun per bulan -> sebagian bulan profit, sebagian loss (untuk chart P/L)
-      const incomeRatio = 1.05 + Math.sin(monthIndex * 2.2) * 0.25 + Math.random() * 0.1;
-      const income = Math.round(principalCost * incomeRatio);
+      // Sales Volume per transaksi; Cost & Income mengikuti rasio bulanan (+ sedikit noise), maks < 3% dari SV
+      const salesVolume = Math.round(SV_PER_TRX * prof.svFactor * rand(0.6, 1.4));
+      const principalCost = Math.round(salesVolume * prof.costToSv * rand(0.92, 1.08));
+      const income = Math.round(principalCost * prof.incomeRatio * rand(0.95, 1.05));
+
+      // Rincian komponen. Kurs hanya ada di transaksi internasional; sisa dibulatkan ke komponen utama
+      const incomeKurs = region === 'International' ? Math.round(income * prof.kursShare) : 0;
+      const incomeMdr = Math.round(income * prof.mdrShare * rand(0.9, 1.1));
+      const incomeInterchange = income - incomeKurs - incomeMdr;
+      const costService = Math.round(principalCost * prof.serviceShare * rand(0.95, 1.05));
+      const costInterchange = principalCost - costService;
 
       const costRateBase = 0.038 + (wave - 1.2) * 0.005;
       const costRate = Number((costRateBase + (Math.random() * 0.002 - 0.001)).toFixed(4));
@@ -139,6 +189,8 @@ const generateDummyData = () => {
         salesVolume: salesVolume, 
         principalCost: principalCost,
         income: income,
+        incomeInterchange, incomeMdr, incomeKurs,
+        costService, costInterchange,
         costRate: Math.max(costRate, 0.01), 
       });
       i++;
@@ -256,13 +308,9 @@ const Dashboard = () => {
 
         if (!chartMap[groupKey]) {
           chartMap[groupKey] = { name: displayLabel, sortKey: groupKey, salesVolume: 0, salesDomestic: 0, salesInternational: 0, income: 0, cost: 0 };
-          STACK_GROUPS.forEach(g => { chartMap[groupKey][`income${g.suffix}`] = 0; chartMap[groupKey][`cost${g.suffix}`] = 0; });
+          STACK_FIELDS.forEach(f => { chartMap[groupKey][f] = 0; });
         }
-        const stack = STACK_GROUPS.find(g => g.group === item.group);
-        if (stack) {
-          chartMap[groupKey][`income${stack.suffix}`] += item.income;
-          chartMap[groupKey][`cost${stack.suffix}`] += item.principalCost;
-        }
+        STACK_FIELDS.forEach(f => { chartMap[groupKey][f] += item[f]; });
         chartMap[groupKey].salesVolume += item.salesVolume;
         if (item.region === 'International') chartMap[groupKey].salesInternational += item.salesVolume;
         else chartMap[groupKey].salesDomestic += item.salesVolume;
@@ -293,10 +341,7 @@ const Dashboard = () => {
           income: Number(d.income.toFixed(2)),
           cost: Number(d.cost.toFixed(2)),
           margin: Number((d.income - d.cost).toFixed(2)),
-          ...Object.fromEntries(STACK_GROUPS.flatMap(g => [
-            [`income${g.suffix}`, Number(d[`income${g.suffix}`].toFixed(2))],
-            [`cost${g.suffix}`, Number(d[`cost${g.suffix}`].toFixed(2))],
-          ])),
+          ...Object.fromEntries(STACK_FIELDS.map(f => [f, Number(d[f].toFixed(2))])),
           // Rasio terhadap Sales Volume (%) -> dipakai line chart Income / Cost / Margin
           // Rasio dibatasi maks 3%
           incomeRatio: d.salesVolume ? capPct(Number(((d.income / d.salesVolume) * 100).toFixed(2))) : 0,
@@ -306,6 +351,8 @@ const Dashboard = () => {
           profit: d.income - d.cost >= 0 ? Number((d.income - d.cost).toFixed(2)) : null,
           loss: d.income - d.cost < 0 ? Number((d.income - d.cost).toFixed(2)) : null,
           marginLine: d.salesVolume ? Math.max(0, capPct(Number((((d.income - d.cost) / d.salesVolume) * 100).toFixed(2)))) : 0,
+          // %Margin with incentive: (Income - Cost + Incentive Principal) / Sales Volume
+          marginIncLine: d.salesVolume ? Math.max(0, capPct(Number((((d.income - d.cost + d.cost * INCENTIVE_RATE) / d.salesVolume) * 100).toFixed(2)))) : 0,
         }));
     };
 
@@ -346,7 +393,7 @@ const Dashboard = () => {
   const handleLogout = () => alert("Logout berhasil!");
   
   // Tooltip Income / Cost / Margin
-  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, ratioKey, ratioLabel, ratioColor, data, stackColors }) => {
+  const MetricTooltip = ({ active, payload, label, metricKey, metricLabel, ratioKey, ratioLabel, ratioColor, data, stackColors, ratioLines }) => {
     if (!active || !payload || !payload.length) return null;
     const row = payload[0].payload;
     const idx = data.indexOf(row);
@@ -356,25 +403,41 @@ const Dashboard = () => {
     const goodWhenUp = metricKey !== 'cost';
     const changeColor = isUp === goodWhenUp ? 'text-emerald-500' : 'text-rose-500';
     return (
-      <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] px-3 py-2 text-[12px] text-slate-700 z-50">
+      <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] px-3 py-2 text-[12px] text-slate-700 z-50 min-w-[240px] whitespace-nowrap">
         <p className="font-bold text-slate-800 mb-1">{label}</p>
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].color }}></div>
           <span className="text-slate-600 font-medium">{metricLabel}:</span>
           <span className="font-bold text-slate-800">{formatValue(row[metricKey])}</span>
         </div>
-        {stackColors && STACK_GROUPS.map((g, i) => (
-          <div key={g.suffix} className="flex items-center gap-2 pl-4">
-            <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: stackColors[i] }}></div>
-            <span className="text-slate-500">{g.label}:</span>
-            <span className="font-semibold text-slate-700">{formatValue(row[`${metricKey}${g.suffix}`])}</span>
+        {stackColors && STACK_CONFIG[metricKey].map(c => (
+          <div key={c.field} className="flex items-center gap-2 pl-4">
+            <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: stackColors[c.color] }}></div>
+            <span className="text-slate-500">{c.label}:</span>
+            <span className="font-semibold text-slate-700">{formatValue(row[c.field])}</span>
           </div>
         ))}
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ratioColor }}></div>
-          <span className="text-slate-600 font-medium">{ratioLabel}:</span>
-          <span className="font-bold text-slate-800">{formatValue(row[ratioKey])}%</span>
-        </div>
+        {ratioLines ? (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ratioColor }}></div>
+              <span className="text-slate-600 font-medium">{ratioLabel}</span>
+            </div>
+            {ratioLines.map(l => (
+              <div key={l.key} className="flex items-center gap-2 pl-4">
+                <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: l.color }}></div>
+                <span className="text-slate-500">{l.label}:</span>
+                <span className="font-semibold text-slate-700">{formatValue(row[l.key])}%</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ratioColor }}></div>
+            <span className="text-slate-600 font-medium">{ratioLabel}:</span>
+            <span className="font-bold text-slate-800">{formatValue(row[ratioKey])}%</span>
+          </div>
+        )}
         {changePct !== null && (
           <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-3">
             <span className="text-slate-500 font-medium">vs sebelumnya</span>
@@ -495,10 +558,10 @@ const Dashboard = () => {
 
               {!hideJenisFilter && (
               <div className="flex flex-col w-full sm:w-auto">
-                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Jenis</label>
+                <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Show As</label>
                 <div className="relative">
                   <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.jenis} onChange={(e) => setFilters({...filters, jenis: e.target.value})}>
-                    <option value="All" disabled hidden>Pilih Jenis</option>
+                    <option value="All">All</option>
                     {JENIS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
@@ -544,12 +607,11 @@ const Dashboard = () => {
                       // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
                       const isSV = metric.key === 'salesVolume';
                       const lineKey = isSV ? 'intlShare' : metric.ratioKey;
-                      const barMax = Math.max(0, ...data.map(d => d[metric.key]));
-                      const amtTicks = buildAmountTicks(barMax || 1);
                       const lineVals = data.map(d => d[lineKey]);
                       const lineLo = lineVals.length ? Math.min(...lineVals) : 0;
                       const lineHi = lineVals.length ? Math.max(...lineVals) : 100;
                       const pctTicks = buildPctTicks(lineLo, lineHi);
+                      const amtTicks = buildAmountTicksBelowLine(data.map(d => d[metric.key]), lineVals, pctTicks);
                       const ratioColor = SV_COLORS[principalName].line;
                       const leftAxisProps = { ...yAxisBase, tick: { fontSize: 10, fill: '#64748b' }, width: 46, domain: [0, amtTicks[AXIS_INTERVALS]], ticks: amtTicks, tickFormatter: formatAxisCompact };
                       const rightAxisProps = { ...yAxisBase, orientation: 'right', tick: { fontSize: 10, fill: ratioColor, fontWeight: 600 }, width: 44, domain: [pctTicks[0], pctTicks[AXIS_INTERVALS]], ticks: pctTicks, tickFormatter: formatPctTick };
@@ -573,7 +635,7 @@ const Dashboard = () => {
                       const plNegSteps = plMaxNeg > 0 ? 1 : 0;
                       const plStep = niceStep(Math.max(1e-9, plMaxPos / (AXIS_INTERVALS - plNegSteps), plMaxNeg));
                       const plTicks = Array.from({ length: AXIS_INTERVALS + 1 }, (_, i) => +((i - plNegSteps) * plStep).toPrecision(12));
-                      const plPctTop = Math.max(0.01, ...data.map(d => d.marginLine)) * 1.3;
+                      const plPctTop = Math.max(0.01, ...data.map(d => Math.max(d.marginLine, d.marginIncLine))) * 1.3;
                       const plPctDomain = [-plPctTop * plNegSteps / (AXIS_INTERVALS - plNegSteps), plPctTop];
                       // Hijau = panah ke atas, merah = panah ke bawah
                       const isGoodChange = (pct) => (pct >= 0) === goodWhenUp;
@@ -591,7 +653,7 @@ const Dashboard = () => {
                                   <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: ratioColor }}>{formatValue(amountPct)}%</span>
                                 )}
                               </div>
-                              <p className="text-[10px] text-slate-400">Periode - {dashboardData.periodLabel}</p>
+                              <p className="text-[10px] text-slate-400">{dashboardData.periodLabel}</p>
                             </div>
                             {changeItems.length > 0 && (
                               <div className="flex gap-3 text-right shrink-0 pr-3">
@@ -612,14 +674,13 @@ const Dashboard = () => {
                                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
                                   <YAxis yAxisId="val" {...yAxisBase} tickMargin={4} tick={{ fontSize: 10, fill: '#64748b' }} width={40} domain={[plTicks[0], plTicks[AXIS_INTERVALS]]} ticks={plTicks} tickFormatter={formatAxisCompact} />
                                   <YAxis yAxisId="pct" orientation="right" hide domain={plPctDomain} allowDataOverflow />
-                                  <RechartsTooltip content={<MetricTooltip metricKey="margin" metricLabel="P/L" ratioKey="marginLine" ratioLabel="%Margin to Volume" ratioColor={PL_COLORS.line} data={data} />} cursor={{ fill: '#f8fafc' }} />
-                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                                  <RechartsTooltip content={<MetricTooltip metricKey="margin" metricLabel="P/L" ratioLabel="% Margin" ratioColor={PL_COLORS.line} ratioLines={PL_LINES} data={data} />} cursor={{ fill: '#f8fafc' }} />
+                                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder('margin')} />
                                   <ReferenceLine yAxisId="val" y={0} stroke="#0f172a" strokeWidth={1.5} />
                                   <Bar yAxisId="val" dataKey="profit" name="Profit" stackId="pl" fill={PL_COLORS.profit} radius={[3, 3, 0, 0]} />
                                   <Bar yAxisId="val" dataKey="loss" name="Loss" stackId="pl" fill={PL_COLORS.loss} radius={[0, 0, 3, 3]} />
-                                  <Line yAxisId="pct" type="linear" dataKey="marginLine" name="%Margin to Volume" stroke={PL_COLORS.line} strokeWidth={2} dot={false} activeDot={{ r: 4 }}>
-                                    <LabelList dataKey="marginLine" position="top" offset={6} formatter={formatPctTick} style={{ fontSize: 9, fontWeight: 700, fill: '#0f172a' }} />
-                                  </Line>
+                                  <Line yAxisId="pct" type="linear" dataKey="marginLine" name="Without Incentive" stroke={PL_COLORS.lineNoInc} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                                  <Line yAxisId="pct" type="linear" dataKey="marginIncLine" name="With Incentive" stroke={PL_COLORS.line} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                                 </ComposedChart>
                               ) : metric.key === 'salesVolume' ? (
                                 <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
@@ -642,9 +703,9 @@ const Dashboard = () => {
                                   <RechartsTooltip content={<MetricTooltip metricKey={metric.key} metricLabel={metric.label} ratioKey={metric.ratioKey} ratioLabel={metric.ratioLabel} ratioColor={ratioColor} data={data} stackColors={metric.stacked ? STACK_COLORS[principalName] : null} />} cursor={{ fill: '#f8fafc' }} />
                                   {metric.stacked ? (
                                     <>
-                                      <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                                      {STACK_GROUPS.map((g, i) => (
-                                        <Bar key={g.suffix} yAxisId="val" dataKey={`${metric.key}${g.suffix}`} name={g.label} stackId={metric.key} fill={STACK_COLORS[principalName][i]} radius={i === STACK_GROUPS.length - 1 ? [3, 3, 0, 0] : 0} />
+                                      <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder(metric.key)} />
+                                      {STACK_CONFIG[metric.key].map((c, i, arr) => (
+                                        <Bar key={c.field} yAxisId="val" dataKey={c.field} name={c.label} stackId={metric.key} fill={STACK_COLORS[principalName][c.color]} radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0} />
                                       ))}
                                     </>
                                   ) : (

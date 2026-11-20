@@ -5,7 +5,7 @@ import { MONTHS, QUARTERS, periodEndMonth } from './reportPeriod';
 
 // ==========================================
 // LAPORAN PROFITABILITAS PRINCIPAL
-// Pilihan, Pembanding (otomatis), Informasi Periode, dan tabel Segmen (Domestic / Int'l / Total + Δ)
+// Pilihan, Informasi Periode, dan tabel Segmen (Domestic / Int'l / Total + Δ)
 // ==========================================
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -50,23 +50,40 @@ const autoComparators = (sel) => {
 
 // Agregasi data per region + komponen income / cost (komponen diturunkan dari data dummy)
 const emptyBucket = () => ({ sv: 0, interchange: 0, mdr: 0, kurs: 0, serviceFee: 0, icFee: 0, incentive: 0 });
+// Kolom tabel: Jenis Produk "All" -> per region, produk tertentu -> per produk (Credit / Debit / Acquiring)
+const REGION_COLUMNS = [
+  { key: 'Domestic', label: 'Domestic', of: (item) => (item.region === 'International' ? null : 'Domestic') },
+  { key: 'International', label: "Int'l", of: (item) => (item.region === 'International' ? 'International' : null) },
+];
+const PRODUCT_COLUMNS = [
+  { key: 'Credit Card', label: 'Credit' },
+  { key: 'Debit Card', label: 'Debit' },
+  { key: 'Acquiring', label: 'Acquiring' },
+].map(c => ({ ...c, of: (item) => (item.group === c.key ? c.key : null) }));
+const getColumns = (product) => (product === 'All' ? REGION_COLUMNS : PRODUCT_COLUMNS);
+
 const aggregate = (db, { principal, product, start, end }) => {
-  const res = { Domestic: emptyBucket(), International: emptyBucket(), days: new Set() };
+  const columns = getColumns(product);
+  const res = { days: new Set() };
+  columns.forEach(c => { res[c.key] = emptyBucket(); });
   db.forEach(item => {
     if (principal === 'Both' ? !['Visa', 'Mastercard'].includes(item.principal) : item.principal !== principal) return;
-    if (product !== 'All' && item.group !== product) return;
     if (item.date < start || item.date > end) return;
-    const b = res[item.region === 'International' ? 'International' : 'Domestic'];
-    const isIntl = item.region === 'International';
+    const segKey = columns.map(c => c.of(item)).find(Boolean);
+    if (!segKey) return;
+    const b = res[segKey];
     b.sv += item.salesVolume;
-    b.interchange += isIntl ? item.income * 0.86 : item.income; // Kurs hanya ada di transaksi internasional
-    b.kurs += isIntl ? item.income * 0.14 : 0;
-    b.serviceFee += item.principalCost;
+    // Rincian komponen sama dengan stacked bar di chart Dashboard
+    b.interchange += item.incomeInterchange;
+    b.mdr += item.incomeMdr;
+    b.kurs += item.incomeKurs;
+    b.serviceFee += item.costService;
+    b.icFee += item.costInterchange;
     b.incentive += item.principalCost * 0.8;
     res.days.add(item.date);
   });
   const total = emptyBucket();
-  Object.keys(total).forEach(k => { total[k] = res.Domestic[k] + res.International[k]; });
+  Object.keys(total).forEach(k => { total[k] = columns.reduce((sum, c) => sum + res[c.key][k], 0); });
   const withDerived = (b) => {
     const income = b.interchange + b.mdr + b.kurs;
     const cost = b.serviceFee + b.icFee;
@@ -76,7 +93,9 @@ const aggregate = (db, { principal, product, start, end }) => {
     const ratio = (v) => (b.sv ? capPct((v / b.sv) * 100) : null);
     return { ...b, income, cost, net, netInc, incomeToVol: ratio(income), costToVol: ratio(cost), margin: ratio(net), marginInc: ratio(netInc) };
   };
-  return { Domestic: withDerived(res.Domestic), International: withDerived(res.International), Total: withDerived(total), days: res.days.size };
+  const out = { Total: withDerived(total), days: res.days.size };
+  columns.forEach(c => { out[c.key] = withDerived(res[c.key]); });
+  return out;
 };
 
 // Baris tabel Segmen (sesuai format laporan)
@@ -161,11 +180,12 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
 
   const mainPeriod = buildPeriod(sel);
   const compPeriods = autoComparators(sel).map(c => buildPeriod({ ...sel, ...c, year: String(c.year) }));
-  const compNames = ['Periode sebelumnya', 'Periode sama tahun lalu'];
 
   const mainData = aggregate(db, { ...sel, ...mainPeriod });
   const compData = compPeriods.map(p => aggregate(db, { ...sel, ...p }));
   const hasData = mainData.days > 0;
+  // Kolom tabel per region (All) atau per produk (Credit / Debit / Acquiring) + Total
+  const columns = [...getColumns(sel.product), { key: 'Total', label: 'Total' }];
 
   const valueClass = (row, v) => (row.signColor && v < 0 ? 'text-rose-600' : 'text-slate-800');
   const renderVal = (row, v) => (row.pct ? formatPct(v) : formatAmount(v));
@@ -181,8 +201,8 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
         </p>
       </div>
 
-      {/* 3 kartu atas: Pilihan, Pembanding, Informasi Periode */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* 2 kartu atas: Pilihan, Informasi Periode */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={CARD}>
           <p className={CARD_TITLE}>Pilihan</p>
           <div className="grid grid-cols-2 gap-3">
@@ -194,19 +214,6 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
             {isMonthly
               ? <FieldSelect label="Bulan" value={sel.month} onChange={set('month')} options={MONTHS} />
               : <FieldSelect label="Quarter" value={sel.quarter} onChange={set('quarter')} options={QUARTERS} />}
-          </div>
-        </div>
-
-        <div className={CARD}>
-          <p className={CARD_TITLE}>Pembanding</p>
-          <div className="flex flex-col gap-3">
-            {compPeriods.map((p, i) => (
-              <div key={i} className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
-                <p className="text-[11px] font-semibold text-slate-500">Pembanding {i + 1} · {compNames[i]}</p>
-                <p className="text-[14px] font-bold text-[#1e3a8a] mt-0.5">{p.label}</p>
-                <p className="text-[11px] text-slate-400">{p.rangeText}</p>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -230,20 +237,20 @@ const ProfitabilityReport = ({ db, sel, onChange }) => {
             <thead className="bg-[#f8fafc]">
               <tr className="border-b border-slate-200/80">
                 <th rowSpan={2} className={`${th} text-left w-[230px]`}>Segmen</th>
-                <th colSpan={3} className={`${th} text-center text-[#1e3a8a] border-l border-slate-200/80`}>{mainPeriod.label}</th>
-                {compPeriods.map((p, i) => <th key={i} colSpan={4} className={`${th} text-center border-l border-slate-200/80`}>vs {p.label}</th>)}
+                <th colSpan={columns.length} className={`${th} text-center text-[#1e3a8a] border-l border-slate-200/80`}>{mainPeriod.label}</th>
+                {compPeriods.map((p, i) => <th key={i} colSpan={columns.length + 1} className={`${th} text-center border-l border-slate-200/80`}>vs {p.label}</th>)}
               </tr>
               <tr className="border-b border-slate-200/80">
-                {['Domestic', "Int'l", 'Total'].map((h, j) => <th key={`m-${h}`} className={`${th} text-right ${j === 0 ? 'border-l border-slate-200/80' : ''}`}>{h}</th>)}
-                {compPeriods.map((_, i) => ['Domestic', "Int'l", 'Total', 'Δ'].map((h, j) => <th key={`${i}-${h}`} className={`${th} text-right ${j === 0 ? 'border-l border-slate-200/80' : ''}`}>{h}</th>))}
+                {columns.map((c, j) => <th key={`m-${c.key}`} className={`${th} text-right ${j === 0 ? 'border-l border-slate-200/80' : ''}`}>{c.label}</th>)}
+                {compPeriods.map((_, i) => [...columns.map(c => c.label), 'Δ'].map((h, j) => <th key={`${i}-${h}`} className={`${th} text-right ${j === 0 ? 'border-l border-slate-200/80' : ''}`}>{h}</th>))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {ROWS.map((row, idx) => {
-                if (row.spacer) return <tr key={`sp-${idx}`} className="bg-slate-50/60"><td colSpan={4 + compPeriods.length * 4} className="h-3"></td></tr>;
+                if (row.spacer) return <tr key={`sp-${idx}`} className="bg-slate-50/60"><td colSpan={1 + columns.length + compPeriods.length * (columns.length + 1)} className="h-3"></td></tr>;
                 const weight = row.bold ? 'font-bold' : 'font-medium';
                 const sub = !row.bold && !row.pct;
-                const renderGroup = (data) => ['Domestic', 'International', 'Total'].map((r, j) => {
+                const renderGroup = (data) => columns.map(({ key: r }, j) => {
                   const v = data[r][row.key];
                   return <td key={r} className={`py-2 px-3 text-right ${weight} ${valueClass(row, v)} ${j === 0 ? 'border-l border-slate-100' : ''}`}>{renderVal(row, v)}</td>;
                 });

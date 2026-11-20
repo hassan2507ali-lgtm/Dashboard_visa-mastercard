@@ -5,6 +5,8 @@
 // 2. GENERATE DUMMY DATA UNTUK TABEL BARU (SESUAI EXCEL BARU)
 // ==========================================
 const TABLE_TEMPLATES = [
+  { jenis: 'Interchange', tagging: 'Interchange Local', principal: 'Visa', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange Local', desc: 'Visa Local', feeType: '-', category: '-', subCategory: '-' },
+  { jenis: 'Interchange', tagging: 'Interchange International', principal: 'Visa', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange International', desc: 'Visa International', feeType: '-', category: '-', subCategory: '-' },
   { jenis: 'Interchange', tagging: 'Interchange Local', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange Local', desc: 'Mastercard Local', feeType: '-', category: '-', subCategory: '-' },
   { jenis: 'Interchange', tagging: 'Interchange International', principal: 'Mastercard', group: 'Acquiring', status: 'Current Billing', ica: '-', billingLine: 'Interchange International', desc: 'Mastercard International', feeType: '-', category: '-', subCategory: '-' },
   { jenis: 'Service Fee', tagging: 'Weekly', principal: 'Mastercard', group: '-', status: 'Current Billing', ica: '12375', billingLine: '2LS2000', desc: 'SMS Acquirer Non-Local Currency Fee', feeType: 'Acquirer Fees', category: 'Other Acquiring Services', subCategory: 'Currency Settlement' },
@@ -180,25 +182,29 @@ export const formatDecimal = (num) => {
 };
 
 // ==========================================
-// SUMMARY PER PRINCIPAL: Total Item, New, Repricing, Existing (jumlah item + amount Eqv IDR)
-// New       = baris dari billing line baru (New Billing)
-// Repricing = billing lama yang tarifnya berubah
-// Existing  = billing lama dengan tarif tetap
-// (Dummy: status Repricing / Existing diacak ~75% / 25%, nanti diganti data asli)
+// SUMMARY PER PRINCIPAL (jumlah item + amount Eqv IDR):
+// - Total Cost, Interchange Fee, Service Fee
+// - New      = baris dari billing line baru (New Billing)
+// - Existing = billing lama
 // ==========================================
 const getBillingStatus = (row) => {
   if (BILLING_KEYS['New Billing'].has(billingKey(row.principal, row.billingLine, row.description))) return 'New';
-  return Math.random() < 0.75 ? 'Repricing' : 'Existing';
+  return 'Existing';
 };
 TABLE_DB.forEach(row => { row.billingStatus = getBillingStatus(row); });
 
-export const SUMMARY_STATUSES = ['New', 'Repricing', 'Existing'];
+export const SUMMARY_STATUSES = ['New', 'Existing'];
 
 export const BILLING_SUMMARY = Object.fromEntries(
   Object.keys(BILLING_HIGHLIGHTS).map(principal => {
     const rows = TABLE_DB.filter(r => r.principal === principal);
     const sumOf = (list) => ({ count: list.length, amount: list.reduce((sum, r) => sum + r.eqvIdr, 0) });
     const byStatus = Object.fromEntries(SUMMARY_STATUSES.map(st => [st, sumOf(rows.filter(r => r.billingStatus === st))]));
-    return [principal, { total: sumOf(rows), ...byStatus }];
+    return [principal, {
+      total: sumOf(rows),
+      interchange: sumOf(rows.filter(r => r.jenisTransaksi === 'Interchange')),
+      serviceFee: sumOf(rows.filter(r => r.jenisTransaksi === 'Service Fee')),
+      ...byStatus,
+    }];
   })
 );

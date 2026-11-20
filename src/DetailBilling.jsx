@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
+import ColumnFilter from './ColumnFilter';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, CreditCard, Book, FileText, User, ChevronUp, ChevronDown, LogOut,
-  Filter, X, ChevronLeft, ChevronRight, Download
+  Filter, X, ChevronLeft, ChevronRight, Download, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { downloadCsv, downloadXlsx } from './exportFile';
 
@@ -17,44 +18,69 @@ import {
 
 
 
-// Daftar filter tabel (urutan tampil di layar)
-const TABLE_FILTER_FIELDS = [
-  { key: 'startPeriode', label: 'Start Periode', allLabel: 'All', options: FILTER_OPTIONS.month },
-  { key: 'endPeriode', label: 'End Periode', allLabel: 'All', options: FILTER_OPTIONS.month },
-  { key: 'jenisTransaksi', label: 'Jenis Transaksi', allLabel: 'All', options: FILTER_OPTIONS.jenisTransaksi },
-  { key: 'tagging', label: 'Tagging', allLabel: 'All', options: FILTER_OPTIONS.tagging },
-  { key: 'principal', label: 'Principal', allLabel: 'All', options: FILTER_OPTIONS.principal },
-  { key: 'group', label: 'Group', allLabel: 'All', options: FILTER_OPTIONS.group },
-  { key: 'region', label: 'Domestic / International', allLabel: 'Both', options: FILTER_OPTIONS.region },
-  { key: 'channel', label: 'CP / CNP / ATM', allLabel: 'All', options: FILTER_OPTIONS.channel },
-  { key: 'billing', label: 'Top / New Billing', allLabel: 'All', options: FILTER_OPTIONS.billing },
-  { key: 'sort', label: 'Sort (Total)', allLabel: 'Default', options: ['Lowest', 'Highest'] },
-];
-
-const DEFAULT_TABLE_FILTERS = {
-  jenisTransaksi: 'All',
-  tagging: 'All',
-  principal: 'All',
-  group: 'All',
-  region: 'All',   // All = Both
-  channel: 'All',
-  billing: 'All',
-  startPeriode: 'All',
-  endPeriode: 'All',
-  sort: 'All'      // All = Default, Lowest / Highest berdasarkan Total
+const getBadgeType = (type) => {
+  if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
+  if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
+  return 'bg-slate-100 text-slate-700';
 };
+
+// Urutan tanggal "15-Jan-2026" -> bulan (MONTH_ORDER) lalu hari
+const tanggalSortValue = (r) => (MONTH_ORDER[r.month] || 0) * 100 + (parseInt(r.tanggal, 10) || 0);
+
+// ==========================================
+// KONFIGURASI KOLOM TABEL (urutan tampil di layar)
+// Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Description, Tagging
+// key = field data untuk filter & sort header (ala Excel); number = kolom angka
+// ==========================================
+const TABLE_COLUMNS = [
+  { key: 'principal', header: 'PRINCIPAL', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.principal },
+  { key: 'jenisTransaksi', header: 'TYPE', className: 'py-4 px-5', render: r => (
+    <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase whitespace-nowrap ${getBadgeType(r.jenisTransaksi)}`}>{r.jenisTransaksi}</span>
+  ) },
+  { key: 'region', header: 'REGION', className: 'py-4 px-5', render: r => (
+    <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase whitespace-nowrap ${r.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{r.region}</span>
+  ) },
+  { key: 'billingLine', header: 'BILLING LINE', className: 'py-4 px-5 text-[13px] font-bold text-slate-700', render: r => r.billingLine },
+  { key: 'rate', number: true, header: 'RATE', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.rate) },
+  { key: 'unit', number: true, header: 'UNIT', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => r.unit.toLocaleString('id-ID') },
+  { key: 'total', number: true, header: 'AMOUNT', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.total) },
+  { key: 'description', header: 'DESCRIPTION', className: 'py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate', render: r => <span title={r.description}>{r.description}</span> },
+  { key: 'tagging', header: 'TAGGING', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.tagging },
+  // Kolom lainnya (tetap ditampilkan)
+  { key: 'group', header: 'GROUP', className: 'py-4 px-5 text-[13px] font-bold', render: r => <span className={r.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}>{r.group}</span> },
+  { key: 'channel', header: 'CHANNEL', className: 'py-4 px-5', render: r => (
+    <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase whitespace-nowrap ${r.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : r.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{r.channel}</span>
+  ) },
+  { key: 'status', header: 'STATUS', className: 'py-4 px-5 text-[13px] font-semibold text-slate-500', render: r => r.status },
+  // Filter Tanggal per bulan (pengganti filter Start / End Periode)
+  { key: 'tanggal', header: 'TANGGAL', filterValue: r => r.month, filterOrder: m => MONTH_ORDER[m] || 0, sortValue: tanggalSortValue, className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.tanggal },
+  { key: 'ica', header: 'ICA', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.ica },
+  { key: 'eqvIdr', number: true, header: 'EQV IDR', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.eqvIdr) },
+  { key: 'principalFeeType', header: 'PRINCIPAL FEE TYPE', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalFeeType },
+  { key: 'principalCategory', header: 'PRINCIPAL CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalCategory },
+  { key: 'principalSubCategory', header: 'PRINCIPAL SUB CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalSubCategory },
+];
+const COLUMN_BY_KEY = Object.fromEntries(TABLE_COLUMNS.map(c => [c.key, c]));
+
+// Nilai sel untuk filter (selalu string supaya bisa dibandingkan di checklist)
+const filterValueOf = (col, row) => String(col.filterValue ? col.filterValue(row) : row[col.key] ?? '');
 
 const DetailBilling = () => {
   const navigate = useNavigate();
   const location = useLocation();
   // Filter awal bisa dikirim dari halaman lain (mis. klik Top/New Billing di Detail Cost)
-  const initialFilters = { ...DEFAULT_TABLE_FILTERS, ...(location.state?.filters || {}) };
+  const initialState = location.state?.filters || {};
 
   // ==========================================
   // STATE MANAGEMENT
   // ==========================================
-  const [tableFilters, setTableFilters] = useState(initialFilters);
-  const [appliedTableFilters, setAppliedTableFilters] = useState(initialFilters);
+  // Filter per kolom ala Excel: { [key kolom]: [nilai terpilih] } — kolom tanpa entri = semua nilai
+  const [colFilters, setColFilters] = useState(() => (
+    initialState.principal && initialState.principal !== 'All' ? { principal: [initialState.principal] } : {}
+  ));
+  const [sortState, setSortState] = useState(null); // { key, dir: 'asc' | 'desc' }
+  const [billingMode, setBillingMode] = useState(initialState.billing || 'All'); // All / Top Billing / New Billing
+  const [openFilter, setOpenFilter] = useState(null); // { key, rect }
 
   // --- STATE PAGINATION ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -65,97 +91,77 @@ const DetailBilling = () => {
   const [isDownloadOpen, setIsDownloadOpen] = useState(false);
 
   // ==========================================
-  // LOGIKA FILTERING & RESET HALAMAN TABEL
+  // LOGIKA FILTERING (header kolom + Top/New Billing) & SORT
   // ==========================================
+  // exceptKey: abaikan filter kolom itu sendiri (untuk daftar nilai di popover, seperti Excel)
+  const rowPasses = (row, exceptKey = null) => {
+    if (billingMode !== 'All' && !BILLING_KEYS[billingMode].has(billingKey(row.principal, row.billingLine, row.description))) return false;
+    return Object.entries(colFilters).every(([key, values]) => (
+      key === exceptKey || values.includes(filterValueOf(COLUMN_BY_KEY[key], row))
+    ));
+  };
+
   const filteredTableData = useMemo(() => {
-    const f = appliedTableFilters;
-    const rows = TABLE_DB.filter(row => {
-      const passJenis = f.jenisTransaksi === 'All' || row.jenisTransaksi === f.jenisTransaksi;
-      const passTagging = f.tagging === 'All' || row.tagging === f.tagging;
-      const passPrincipal = f.principal === 'All' || row.principal === f.principal;
-      const passGroup = f.group === 'All' || row.group === f.group;
-      const passRegion = f.region === 'All' || row.region === f.region;
-      const passChannel = f.channel === 'All' || row.channel === f.channel;
-      const passBilling = f.billing === 'All' || BILLING_KEYS[f.billing].has(billingKey(row.principal, row.billingLine, row.description));
-
-      // Filter rentang periode (bulan)
-      let passPeriode = true;
-      const rowMonthIdx = MONTH_ORDER[row.month];
-      const startIdx = f.startPeriode !== 'All' ? MONTH_ORDER[f.startPeriode] : 0;
-      const endIdx = f.endPeriode !== 'All' ? MONTH_ORDER[f.endPeriode] : 999;
-      if (rowMonthIdx) {
-        passPeriode = rowMonthIdx >= startIdx && rowMonthIdx <= endIdx;
-      }
-
-      return passJenis && passTagging && passPrincipal && passGroup && passRegion && passChannel && passBilling && passPeriode;
-    });
-
-    // Urutkan berdasarkan Total: Lowest (kecil -> besar) / Highest (besar -> kecil)
-    if (f.sort === 'Lowest') rows.sort((a, b) => a.total - b.total);
-    if (f.sort === 'Highest') rows.sort((a, b) => b.total - a.total);
+    const rows = TABLE_DB.filter(row => rowPasses(row));
+    if (sortState) {
+      const col = COLUMN_BY_KEY[sortState.key];
+      const valueOf = col.sortValue || (r => r[col.key]);
+      const sign = sortState.dir === 'asc' ? 1 : -1;
+      rows.sort((a, b) => {
+        const va = valueOf(a), vb = valueOf(b);
+        return sign * (typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'id'));
+      });
+    }
     return rows;
-  }, [appliedTableFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colFilters, sortState, billingMode]);
 
-  // Reset ke halaman 1 setiap kali filter diterapkan
-  const handleApplyTableFilter = () => {
-    setAppliedTableFilters({ ...tableFilters });
+  // Daftar nilai unik untuk popover filter kolom (mengikuti filter kolom lain)
+  const filterOptionsFor = (col) => {
+    const map = new Map();
+    TABLE_DB.forEach(row => {
+      if (!rowPasses(row, col.key)) return;
+      const v = filterValueOf(col, row);
+      if (!map.has(v)) map.set(v, col.filterValue ? col.filterValue(row) : row[col.key]);
+    });
+    const list = [...map.entries()].map(([value, raw]) => ({
+      value,
+      raw,
+      label: col.number ? formatDecimal(raw) : (value === '' ? '(Blanks)' : value),
+    }));
+    if (col.filterOrder) list.sort((a, b) => col.filterOrder(a.raw) - col.filterOrder(b.raw));
+    else if (col.number) list.sort((a, b) => a.raw - b.raw);
+    else list.sort((a, b) => a.label.localeCompare(b.label, 'id'));
+    return list;
+  };
+
+  const applyColFilter = (key, values) => {
+    setColFilters(prev => {
+      const next = { ...prev };
+      if (values) next[key] = values; else delete next[key];
+      return next;
+    });
+    setCurrentPage(1);
+    setOpenFilter(null);
+  };
+  const applySort = (key, dir) => {
+    setSortState(dir ? { key, dir } : null);
+    setCurrentPage(1);
+    setOpenFilter(null);
+  };
+  const handleClearAll = () => {
+    setColFilters({});
+    setSortState(null);
+    setBillingMode('All');
     setCurrentPage(1);
   };
-  const handleResetTableFilter = () => {
-    setTableFilters({ ...DEFAULT_TABLE_FILTERS });
-    setAppliedTableFilters({ ...DEFAULT_TABLE_FILTERS });
-    setCurrentPage(1);
-  };
-
-  // Kolom penanda muncul sesuai filter Billing yang sedang diterapkan
-  const billingMode = appliedTableFilters.billing;
+  const activeFilterCount = Object.keys(colFilters).length + (billingMode !== 'All' ? 1 : 0);
 
   const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentTableData = filteredTableData.slice(startIndex, startIndex + itemsPerPage);
 
   const handleLogout = () => alert("Logout berhasil!");
-
-  const getBadgeType = (type) => {
-    if (type.includes('Service')) return 'bg-amber-100 text-amber-700';
-    if (type.includes('Interchange')) return 'bg-emerald-100 text-emerald-700';
-    return 'bg-slate-100 text-slate-700';
-  };
-
-  // ==========================================
-  // RENDER UI
-  // ==========================================
-  // ==========================================
-  // KONFIGURASI KOLOM TABEL (urutan tampil di layar)
-  // Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Description, Tagging
-  // ==========================================
-  const TABLE_COLUMNS = [
-    { header: 'PRINCIPAL', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.principal },
-    { header: 'TYPE', className: 'py-4 px-5', render: r => (
-      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${getBadgeType(r.jenisTransaksi)}`}>{r.jenisTransaksi}</span>
-    ) },
-    { header: 'REGION', className: 'py-4 px-5', render: r => (
-      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${r.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{r.region}</span>
-    ) },
-    { header: 'BILLING LINE', className: 'py-4 px-5 text-[13px] font-bold text-slate-700', render: r => r.billingLine },
-    { header: 'RATE', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.rate) },
-    { header: 'UNIT', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => r.unit.toLocaleString('id-ID') },
-    { header: 'AMOUNT', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.total) },
-    { header: 'DESCRIPTION', className: 'py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate', render: r => <span title={r.description}>{r.description}</span> },
-    { header: 'TAGGING', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.tagging },
-    // Kolom lainnya (tetap ditampilkan)
-    { header: 'GROUP', className: 'py-4 px-5 text-[13px] font-bold', render: r => <span className={r.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}>{r.group}</span> },
-    { header: 'CHANNEL', className: 'py-4 px-5', render: r => (
-      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase ${r.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : r.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{r.channel}</span>
-    ) },
-    { header: 'STATUS', className: 'py-4 px-5 text-[13px] font-semibold text-slate-500', render: r => r.status },
-    { header: 'TANGGAL', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.tanggal },
-    { header: 'ICA', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.ica },
-    { header: 'EQV IDR', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.eqvIdr) },
-    { header: 'PRINCIPAL FEE TYPE', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalFeeType },
-    { header: 'PRINCIPAL CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalCategory },
-    { header: 'PRINCIPAL SUB CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalSubCategory },
-  ];
 
   // ==========================================
   // DOWNLOAD DATA TABEL SESUAI FILTER (CSV / XLSX) — nilai mentah, bukan teks yang sudah diformat
@@ -257,62 +263,69 @@ const DetailBilling = () => {
           {/* TABEL DETAIL BILLING */}
           <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden mb-10">
 
-            <div className="px-6 py-6 border-b border-slate-100 flex flex-col gap-5">
-              {/* Baris judul + tombol aksi */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Detail Billing</h2>
-                  <p className="text-[12px] text-slate-400 mt-0.5">{filteredTableData.length} billing sesuai filter</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={handleResetTableFilter} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[12px] font-semibold px-2 py-2 transition-all bg-transparent border-none">Reset</button>
-                  <button onClick={handleApplyTableFilter} className="flex items-center gap-1.5 px-6 py-2 bg-[#111827] hover:bg-black text-white rounded-lg text-[12px] font-bold shadow-sm transition-all active:scale-95">
-                    <Filter size={13} /> Apply
-                  </button>
-                </div>
+            {/* Judul + aksi. Filter per kolom ada di header tabel (klik ▾ seperti Excel) */}
+            <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Detail Billing</h2>
+                <p className="text-[12px] text-slate-400 mt-0.5">
+                  {filteredTableData.length} billing sesuai filter
+                  {activeFilterCount > 0 && <span className="text-blue-600 font-semibold"> · {activeFilterCount} filter aktif</span>}
+                </p>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {(activeFilterCount > 0 || sortState) && (
+                  <button onClick={handleClearAll} className="flex items-center gap-1 text-[#1e3a8a] hover:text-blue-800 hover:underline text-[12px] font-semibold px-2 py-1.5 bg-transparent border-none">
+                    <X size={13} /> Clear filter
+                  </button>
+                )}
 
-              {/* Grid filter berlabel, rapi di semua ukuran layar */}
-              <div className="grid grid-cols-2 sm:grid-cols-6 xl:grid-cols-11 gap-3 items-end">
-                {TABLE_FILTER_FIELDS.map(field => (
-                  <div key={field.key} className="flex flex-col gap-1 min-w-0">
-                    <label className="text-[11px] font-semibold text-slate-500 leading-tight">{field.label}</label>
-                    <div className="relative flex items-center">
-                      <select
-                        className="w-full pl-3 pr-7 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors appearance-none outline-none bg-white cursor-pointer truncate"
-                        value={tableFilters[field.key]}
-                        onChange={(e) => setTableFilters({ ...tableFilters, [field.key]: e.target.value })}
-                      >
-                        <option value="All">{field.allLabel}</option>
-                        {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                      <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
-                    </div>
-                  </div>
-                ))}
+                {/* Top / New Billing (bukan kolom tabel, jadi tetap di sini) */}
+                <div className="relative flex items-center">
+                  <select
+                    className={`pl-3 pr-7 py-1.5 border rounded-lg text-[12px] font-semibold transition-colors appearance-none outline-none cursor-pointer ${billingMode !== 'All' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    value={billingMode}
+                    onChange={(e) => { setBillingMode(e.target.value); setCurrentPage(1); }}
+                  >
+                    <option value="All">All Billing</option>
+                    {FILTER_OPTIONS.billing.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                </div>
 
-                {/* Dropdown Download (di samping Sort): unduh semua data sesuai filter */}
-                <div className="flex flex-col gap-1 min-w-0">
-                  <label className="text-[11px] font-semibold text-slate-500 leading-tight">Download</label>
-                  <div className="relative">
-                    <button
-                      onClick={() => setIsDownloadOpen(o => !o)}
-                      disabled={filteredTableData.length === 0}
-                      className="w-full flex items-center justify-between gap-1.5 pl-3 pr-2.5 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <span className="flex items-center gap-1.5"><Download size={12} /> Export</span>
-                      <ChevronDown size={12} className={`text-slate-400 transition-transform ${isDownloadOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    {isDownloadOpen && (
-                      <>
-                        <div className="fixed inset-0 z-20" onClick={() => setIsDownloadOpen(false)}></div>
-                        <div className="absolute right-0 mt-1 w-full min-w-[120px] bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
-                          <button onClick={() => handleDownload('csv')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">CSV</button>
-                          <button onClick={() => handleDownload('xlsx')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 border-t border-slate-100">XLSX</button>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                {/* Sort berdasarkan Amount (sinkron dengan sort di header kolom AMOUNT) */}
+                <div className="relative flex items-center">
+                  <select
+                    className={`pl-3 pr-7 py-1.5 border rounded-lg text-[12px] font-semibold transition-colors appearance-none outline-none cursor-pointer ${sortState?.key === 'total' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    value={sortState?.key === 'total' ? sortState.dir : 'default'}
+                    onChange={(e) => applySort('total', e.target.value === 'default' ? null : e.target.value)}
+                    title="Sort berdasarkan Amount"
+                  >
+                    <option value="default">Sort: Default</option>
+                    <option value="asc">Sort: Amount Lowest</option>
+                    <option value="desc">Sort: Amount Highest</option>
+                  </select>
+                  <ChevronDown size={12} className="text-slate-400 absolute right-2.5 pointer-events-none" />
+                </div>
+
+                {/* Dropdown Download: unduh semua data sesuai filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => setIsDownloadOpen(o => !o)}
+                    disabled={filteredTableData.length === 0}
+                    className="flex items-center gap-1.5 pl-3 pr-2.5 py-1.5 border border-slate-200 rounded-lg text-[12px] font-semibold text-slate-600 bg-white hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Download size={12} /> Export
+                    <ChevronDown size={12} className={`text-slate-400 transition-transform ${isDownloadOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isDownloadOpen && (
+                    <>
+                      <div className="fixed inset-0 z-20" onClick={() => setIsDownloadOpen(false)}></div>
+                      <div className="absolute right-0 mt-1 w-full min-w-[120px] bg-white border border-slate-200 rounded-lg shadow-lg z-30 overflow-hidden">
+                        <button onClick={() => handleDownload('csv')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50">CSV</button>
+                        <button onClick={() => handleDownload('xlsx')} className="w-full text-left px-3 py-2 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 border-t border-slate-100">XLSX</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -325,11 +338,29 @@ const DetailBilling = () => {
                     {billingMode !== 'All' && (
                       <th className="py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">{billingMode.toUpperCase()}</th>
                     )}
-                    {TABLE_COLUMNS.map(col => (
-                      <th key={col.header} className={`py-4 px-5 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80 ${col.right ? 'text-right' : ''}`}>
-                        {col.header}
-                      </th>
-                    ))}
+                    {TABLE_COLUMNS.map(col => {
+                      const isFiltered = !!colFilters[col.key];
+                      const sortDir = sortState?.key === col.key ? sortState.dir : null;
+                      const isOpen = openFilter?.key === col.key;
+                      return (
+                        <th key={col.key} className={`py-3 px-5 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200/80 whitespace-nowrap ${isFiltered || sortDir ? 'text-blue-700' : 'text-slate-500'}`}>
+                          <div className={`flex items-center gap-1.5 ${col.right ? 'justify-end' : ''}`}>
+                            <span>{col.header}</span>
+                            {/* Tombol filter ala Excel */}
+                            <button
+                              onClick={(e) => setOpenFilter(isOpen ? null : { key: col.key, rect: e.currentTarget.getBoundingClientRect() })}
+                              title={`Filter / sort ${col.header}`}
+                              className={`flex items-center gap-0.5 px-1 py-0.5 rounded border transition-colors ${isFiltered || sortDir || isOpen ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-300'}`}
+                            >
+                              {isFiltered && <Filter size={10} />}
+                              {sortDir === 'asc' && <ArrowUp size={10} />}
+                              {sortDir === 'desc' && <ArrowDown size={10} />}
+                              {!isFiltered && !sortDir && <ChevronDown size={11} />}
+                            </button>
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -352,7 +383,7 @@ const DetailBilling = () => {
                         )}
                         
                         {TABLE_COLUMNS.map(col => (
-                          <td key={col.header} className={col.className}>{col.render(row)}</td>
+                          <td key={col.key} className={col.className}>{col.render(row)}</td>
                         ))}
                       </tr>
                     ))
@@ -366,6 +397,21 @@ const DetailBilling = () => {
                 </tbody>
               </table>
             </div>
+
+            {openFilter && (
+              <ColumnFilter
+                key={openFilter.key}
+                title={COLUMN_BY_KEY[openFilter.key].header}
+                isNumber={!!COLUMN_BY_KEY[openFilter.key].number}
+                options={filterOptionsFor(COLUMN_BY_KEY[openFilter.key])}
+                selected={colFilters[openFilter.key] || null}
+                sortDir={sortState?.key === openFilter.key ? sortState.dir : null}
+                anchorRect={openFilter.rect}
+                onSort={(dir) => applySort(openFilter.key, dir)}
+                onApply={(values) => applyColFilter(openFilter.key, values)}
+                onClose={() => setOpenFilter(null)}
+              />
+            )}
 
             {/* --- FOOTER PAGINATION --- */}
             <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 border-t border-slate-100 gap-4 bg-white">

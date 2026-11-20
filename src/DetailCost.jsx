@@ -13,7 +13,7 @@ import {
 import LogoDanantara from './mandiri.png';
 import LogoMandiri from './danatara.png';
 
-import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, capPct } from './chartAxis';
+import { AXIS_INTERVALS, buildPctTicks, buildAmountTicksBelowLine, formatPctTick, yAxisBase, capPct } from './chartAxis';
 import { BILLING_HIGHLIGHTS, BILLING_SUMMARY, SUMMARY_STATUSES, TOP_BILLING_LIMIT } from './billingData';
 
 // ==========================================
@@ -82,6 +82,7 @@ const CHART_SECTIONS = [
 const PRINCIPAL_COLOR = { Visa: '#1e3a8a', Mastercard: '#ea580c' };
 
 const formatCurrency = (value) => {
+  if (value >= 1000000000000) return (value / 1000000000000).toFixed(2) + ' T';
   if (value >= 1000000000) return (value / 1000000000).toFixed(2) + ' bn';
   if (value >= 1000000) return (value / 1000000).toFixed(2) + ' M';
   if (value >= 1000) return (value / 1000).toFixed(2) + ' Rb';
@@ -95,6 +96,9 @@ const DEFAULT_START_DATE = `${TODAY.getFullYear()}-01-01`;
 const DEFAULT_END_DATE = toInputDate(TODAY);
 const DATE_MIN = CHART_DB.Visa.serviceFee[0].dateString;
 const DATE_MAX = CHART_DB.Visa.serviceFee[CHART_DB.Visa.serviceFee.length - 1].dateString;
+
+// Filter Tipe: Position = nilai per bulan, Accumulative = total berjalan sejak Start Date
+const TYPE_OPTIONS = ['Position', 'Accumulative'];
 
 // Filter "Tampilkan": line apa saja yang muncul di chart (Billing Line selalu tampil)
 const VIEW_OPTIONS = {
@@ -147,6 +151,7 @@ const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
 const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
   const metricKey = chartFilters.view === 'Income' ? 'income' : 'cost';
   const metricLabel = metricKey === 'income' ? 'Income' : 'Cost';
+  const isAccum = chartFilters.type === 'Accumulative';
   const barColor = PRINCIPAL_COLOR[principal];
   const ratioColor = RATIO_LINE_COLOR[principal];
 
@@ -164,45 +169,87 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       aggMap[key].cost += item.cost;
       aggMap[key].salesVolume += item.salesVolume;
     });
-    return Object.values(aggMap)
-      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-      .map(d => ({
-        ...d,
-        // % Cost terhadap Sales Volume, dibatasi maks 3%
-        costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
-      }));
-  }, [chartFilters, principal, sources, metricKey]);
+    const months = Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    // Accumulative: setiap bulan = total berjalan dari bulan pertama di rentang filter
+    if (isAccum) {
+      let value = 0, cost = 0, salesVolume = 0;
+      months.forEach(d => {
+        value += d.value; cost += d.cost; salesVolume += d.salesVolume;
+        Object.assign(d, { value, cost, salesVolume });
+      });
+    }
+    return months.map(d => ({
+      ...d,
+      // % Cost terhadap Sales Volume, dibatasi maks 3%
+      costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
+    }));
+  }, [chartFilters, principal, sources, metricKey, isAccum]);
 
   const last = data[data.length - 1];
-  const prev = data[data.length - 2];
   const lastVal = last ? last.value : 0;
-  const diffPct = prev && prev.value ? ((lastVal - prev.value) / prev.value) * 100 : null;
-  const isUp = diffPct !== null && diffPct >= 0;
-  // Cost naik = buruk (merah), Income naik = baik (hijau)
-  const trendColor = diffPct === null ? 'text-slate-400' : (isUp === (metricKey === 'income') ? 'text-emerald-500' : 'text-rose-500');
+
+  // MoM & YoY dihitung dari seluruh data (bukan hanya rentang filter), supaya bulan pembanding selalu ada
+  const monthTotal = (monthKey) => sources
+    .flatMap(src => CHART_DB[principal][src])
+    .reduce((sum, item) => (item.monthKey === monthKey ? sum + item[metricKey] : sum), 0);
+  const shiftMonth = (monthKey, deltaMonths) => {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m - 1 + deltaMonths, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const pctChange = (base) => (base ? ((lastVal - base) / base) * 100 : null);
+  // Accumulative: YoY = rentang tanggal yang sama tahun lalu, MoM = akumulasi s.d. bulan sebelumnya
+  const shiftYear = (dateString) => `${Number(dateString.slice(0, 4)) - 1}${dateString.slice(4)}`;
+  const rangeTotal = (from, to) => sources
+    .flatMap(src => CHART_DB[principal][src])
+    .reduce((sum, item) => (item.dateString >= from && item.dateString <= to ? sum + item[metricKey] : sum), 0);
+  const [rangeStart, rangeEnd] = chartFilters.startDate <= chartFilters.endDate
+    ? [chartFilters.startDate, chartFilters.endDate] : [chartFilters.endDate, chartFilters.startDate];
+  const yoyBase = !last ? null : isAccum
+    ? rangeTotal(shiftYear(rangeStart), shiftYear(rangeEnd))
+    : monthTotal(shiftMonth(last.sortKey, -12));
+  const momBase = !last ? null : isAccum
+    ? (data.length > 1 ? data[data.length - 2].value : null)
+    : monthTotal(shiftMonth(last.sortKey, -1));
+  const changeItems = last ? [
+    { label: 'YoY', pct: pctChange(yoyBase) },
+    { label: 'MoM', pct: pctChange(momBase) },
+  ].filter(c => c.pct !== null) : [];
+  // Sama seperti Main Dashboard: Cost naik = buruk, Income naik = baik. Hijau selalu ▲, merah selalu ▼
+  const isGoodChange = (pct) => (pct >= 0) === (metricKey === 'income');
+  // Label periode: nama bulan lengkap, mis. "November 2026"
+  const monthName = (key, opts) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('id-ID', opts);
+  const periodLabel = !last ? '-' : isAccum
+    // Accumulative: rentang bulan, mis. "Januari – November 2026"
+    ? (data[0].sortKey === last.sortKey ? monthName(last.sortKey, { month: 'long', year: 'numeric' })
+      : `${monthName(data[0].sortKey, data[0].sortKey.slice(0, 4) === last.sortKey.slice(0, 4) ? { month: 'long' } : { month: 'long', year: 'numeric' })} – ${monthName(last.sortKey, { month: 'long', year: 'numeric' })}`)
+    : monthName(last.sortKey, { month: 'long', year: 'numeric' });
 
   // Sumbu Y kiri (amount) & kanan (%) masing-masing 5 tick bulat, sejajar dengan grid.
   // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
-  const barMax = Math.max(1, ...data.map(d => d.value));
-  const amtTicks = buildAmountTicks(barMax);
 
   const ratios = data.map(d => d.costRatio);
   const ratioLo = ratios.length ? Math.min(...ratios) : 0;
   const ratioHi = ratios.length ? Math.max(...ratios) : 3;
   const pctTicks = buildPctTicks(ratioLo, ratioHi);
+  const amtTicks = buildAmountTicksBelowLine(data.map(d => d.value), ratios, pctTicks);
 
   return (
     <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[300px] flex flex-col">
-      <div className="flex justify-between items-start">
-        <div>
+      <div className="flex justify-between items-start gap-3">
+        <div className="min-w-0">
           <p className="text-[13px] font-bold text-slate-700">{title}</p>
-          <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1">{formatCurrency(lastVal)}</p>
-          <p className="text-[10px] text-slate-400">{metricLabel} · {last ? last.name : '-'}</p>
+          <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1 whitespace-nowrap">{formatCurrency(lastVal)}</p>
+          <p className="text-[10px] text-slate-400">{periodLabel}</p>
         </div>
-        {diffPct !== null && (
-          <div className="text-right">
-            <p className={`text-[13px] font-bold ${trendColor}`}>{isUp ? '▲' : '▼'} {Math.abs(diffPct).toFixed(1)}%</p>
-            <p className="text-[10px] text-slate-400">vs {prev.name}</p>
+        {changeItems.length > 0 && (
+          <div className="flex gap-3 text-right shrink-0 pr-3">
+            {changeItems.map(c => (
+              <div key={c.label}>
+                <p className={`text-[13px] font-bold whitespace-nowrap ${isGoodChange(c.pct) ? 'text-emerald-500' : 'text-rose-500'}`}>{isGoodChange(c.pct) ? '▲' : '▼'} {Math.abs(c.pct).toFixed(1)}%</p>
+                <p className="text-[10px] text-slate-400">{c.label}</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -218,7 +265,7 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
               <YAxis yAxisId="amt" {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} tickFormatter={formatAxisAmount} />
               <YAxis yAxisId="pct" orientation="right" {...yAxisBase} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} tickFormatter={formatPctTick} />
-              <Tooltip content={<SimpleTooltip metricLabel={metricLabel} />} cursor={{ fill: '#f8fafc' }} />
+              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} />} cursor={{ fill: '#f8fafc' }} />
               <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
               <Line yAxisId="pct" type="linear" dataKey="costRatio" name="Cost / SV" stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
             </ComposedChart>
@@ -264,51 +311,52 @@ const BillingListCard = ({ title, subtitle, items, accent, emptyText, onOpen }) 
 );
 
 // ==========================================
-// KARTU SUMMARY: Total Item, New, Repricing (per principal)
+// KARTU SUMMARY (per principal):
+// atas  = 3 kartu kecil Total Cost, Interchange Fee, Service Fee
+// bawah = tube oval New | Existing (label di dalam tube)
 // ==========================================
 const NEW_COLOR = '#10b981';
+const EXISTING_COLOR = '#64748b';
 const BillingSummaryCard = ({ principal, summary }) => {
-  const total = summary.total;
-  const pct = (n) => (total.count ? (n / total.count) * 100 : 0);
   const accent = PRINCIPAL_COLOR[principal];
-  const STATUS_COLOR = { New: NEW_COLOR, Repricing: accent, Existing: '#94a3b8' };
+  const totalCount = SUMMARY_STATUSES.reduce((sum, st) => sum + summary[st].count, 0);
+  const pct = (n) => (totalCount ? (n / totalCount) * 100 : 0);
+  const STATUS_COLOR = { New: NEW_COLOR, Existing: EXISTING_COLOR };
   const parts = SUMMARY_STATUSES.map(st => ({ label: st, ...summary[st], color: STATUS_COLOR[st] }));
   const rp = (v) => `Rp ${formatCurrency(v)}`;
+  const miniCards = [
+    { label: 'Total Cost', ...summary.total, highlight: true },
+    { label: 'Interchange Fee', ...summary.interchange },
+    { label: 'Service Fee', ...summary.serviceFee },
+  ];
   return (
     <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 relative overflow-hidden h-full flex flex-col justify-center">
       <div className="absolute top-0 left-0 w-full h-[3px]" style={{ backgroundColor: accent }}></div>
       <p className="text-[13px] font-bold text-slate-700 text-center mb-4 pb-3 border-b border-slate-100">Summary</p>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-        {/* Total Item */}
-        <div className="shrink-0 sm:pr-6 sm:border-r border-slate-100">
-          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Item</p>
-          <p className="text-[30px] font-bold text-[#0f172a] leading-none mt-1.5">{total.count.toLocaleString('id-ID')}</p>
-          <p className="text-[12px] font-semibold text-slate-500 mt-1" title={`Eqv IDR ${total.amount.toLocaleString('id-ID')}`}>({rp(total.amount)})</p>
-        </div>
 
-        {/* Komposisi New / Repricing / Existing */}
-        <div className="flex-1 min-w-0">
-          <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-slate-100">
-            {parts.map(p => p.count > 0 && (
-              <div key={p.label} style={{ width: `${pct(p.count)}%`, backgroundColor: p.color }} title={`${p.label}: ${p.count}`}></div>
-            ))}
+      {/* 3 kartu kecil */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {miniCards.map(c => (
+          <div key={c.label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5 min-w-0">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate">{c.label}</p>
+            <p className="text-[17px] font-bold leading-tight mt-1 truncate" style={{ color: c.highlight ? accent : '#0f172a' }} title={`Eqv IDR ${c.amount.toLocaleString('id-ID')}`}>{rp(c.amount)}</p>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">{c.count.toLocaleString('id-ID')} item</p>
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            {parts.map(p => (
-              <div key={p.label} className="flex items-start gap-2 min-w-0">
-                <span className="w-2.5 h-2.5 rounded-full mt-1 shrink-0" style={{ backgroundColor: p.color }}></span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold text-slate-500">{p.label}</p>
-                  <p className="text-[18px] font-bold text-slate-800 leading-tight">
-                    {p.count.toLocaleString('id-ID')}
-                    <span className="text-[11px] font-semibold text-slate-400 ml-1.5">{pct(p.count).toFixed(0)}%</span>
-                  </p>
-                  <p className="text-[11px] font-semibold text-slate-500 truncate" title={`Eqv IDR ${p.amount.toLocaleString('id-ID')}`}>({rp(p.amount)})</p>
-                </div>
-              </div>
-            ))}
+        ))}
+      </div>
+
+      {/* Tube oval New | Existing (satu tube menyatu) — tipis, lebar mengikuti jumlah item, label di dalam tube */}
+      <div className="flex h-6 w-full mt-4 rounded-full overflow-hidden bg-slate-100 shadow-sm">
+        {parts.map(p => (
+          <div
+            key={p.label}
+            className="flex items-center justify-center gap-1 px-2.5 text-white text-[10.5px] font-bold tracking-wide whitespace-nowrap"
+            style={{ flex: `${Math.max(p.count, 0.0001)} 1 0`, minWidth: 92, background: `linear-gradient(180deg, ${p.color}e6, ${p.color})` }}
+            title={`${p.label}: ${p.count} item · Eqv IDR ${p.amount.toLocaleString('id-ID')}`}
+          >
+            {p.label}<span className="font-semibold opacity-85">· {p.count.toLocaleString('id-ID')} ({pct(p.count).toFixed(0)}%)</span>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -321,7 +369,7 @@ const DetailCost = () => {
   // 3. STATE MANAGEMENT
   // ==========================================
   const [chartFilters, setChartFilters] = useState({
-    startDate: DEFAULT_START_DATE, endDate: DEFAULT_END_DATE, view: 'All'
+    startDate: DEFAULT_START_DATE, endDate: DEFAULT_END_DATE, view: 'All', type: 'Position'
   });
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -447,10 +495,24 @@ const DetailCost = () => {
                   <ChevronDown size={14} className="text-slate-500 absolute right-2 pointer-events-none" />
                 </div>
               </div>
+
+              <div className="flex flex-col gap-1 flex-1 sm:flex-none sm:w-[130px]">
+                <label className="text-[11px] font-semibold text-slate-500">Tipe</label>
+                <div className="relative flex items-center">
+                  <select
+                    className="w-full border border-slate-300 rounded-md px-2 py-1 pr-7 text-[12px] font-medium text-slate-700 bg-white outline-none focus:border-blue-400 cursor-pointer appearance-none"
+                    value={chartFilters.type}
+                    onChange={(e) => setChartFilters({...chartFilters, type: e.target.value})}
+                  >
+                    {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="text-slate-500 absolute right-2 pointer-events-none" />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* SECTION 2: LINE CHART PER PRINCIPAL (kiri Visa, kanan Mastercard; Top/New Billing, Summary, Service Fee, Interchange Fee) */}
+          {/* SECTION 2: LINE CHART PER PRINCIPAL (kiri Visa, kanan Mastercard; Interchange Fee, Service Fee, Summary, Top/New Billing) */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-8">
             {CHART_PRINCIPALS.map(principal => (
               <div key={principal} className="flex flex-col gap-5 min-w-0 xl:grid xl:grid-rows-subgrid" style={{ gridRow: `span ${3 + CHART_SECTIONS.length}` }}>
@@ -458,9 +520,6 @@ const DetailCost = () => {
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: principal === 'Visa' ? '#1e3a8a' : '#ea580c' }}></span>
                   {principal}
                 </h2>
-
-                {/* Summary: Total Item, New, Repricing */}
-                <BillingSummaryCard principal={principal} summary={BILLING_SUMMARY[principal]} />
 
                 {CHART_SECTIONS.map(section => {
                   return (
@@ -473,6 +532,9 @@ const DetailCost = () => {
                     />
                   );
                 })}
+
+                {/* Summary (di tengah, setelah chart Service Fee): Total Cost, Interchange Fee, Service Fee + New | Existing */}
+                <BillingSummaryCard principal={principal} summary={BILLING_SUMMARY[principal]} />
 
                 {/* Top Billing & New Billing */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">

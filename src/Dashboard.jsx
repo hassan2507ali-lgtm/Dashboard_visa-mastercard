@@ -13,6 +13,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine, LabelList
 } from 'recharts';
 import ProfitabilityReport from './ProfitabilityReport';
+import { defaultReportSel, periodEndMonth, MONTHS, QUARTERS } from './reportPeriod';
 import { AXIS_INTERVALS, buildAmountTicks, buildPctTicks, formatPctTick, yAxisBase, niceStep, capPct } from './chartAxis';
 
 // IMPORT GAMBAR LOGO
@@ -60,10 +61,26 @@ const SV_COLORS = {
   Mastercard: { domestic: '#fdba74', international: '#c2410c', line: '#0f766e' },
 };
 
-// Label sumbu amount: ringkas (mis. 0, 2,5, 1,2 rb, 3 jt)
-const formatAxisCompact = (v) => Number(v).toLocaleString('id-ID', { notation: 'compact', maximumFractionDigits: 2 });
+// Satuan ringkas Rupiah (dipakai di sumbu & angka utama kartu):
+// K = Ribu (10^3), M = Juta / Million (10^6), B = Miliar / Billion (10^9), T = Triliun / Trillion (10^12)
+const UNIT_SCALES = [
+  { value: 1e12, suffix: 'T', label: 'Triliun' },
+  { value: 1e9, suffix: 'B', label: 'Miliar' },
+  { value: 1e6, suffix: 'M', label: 'Juta' },
+  { value: 1e3, suffix: 'K', label: 'Ribu' },
+];
+const formatCompact = (v, digits = 2) => {
+  const n = Number(v || 0);
+  const abs = Math.abs(n);
+  const scale = UNIT_SCALES.find(s => abs >= s.value);
+  if (!scale) return n.toLocaleString('id-ID', { maximumFractionDigits: digits });
+  return `${(n / scale.value).toLocaleString('id-ID', { maximumFractionDigits: digits })} ${scale.suffix}`;
+};
+// Label sumbu amount: ringkas (mis. 0, 2,5 K, 3 M, 1,2 B)
+const formatAxisCompact = (v) => formatCompact(v, 1);
 const formatValue = (val) => Number(val || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const formatRupiah = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatValue(Math.abs(Number(val || 0)))}`;
+const formatRupiahCompact = (val) => `${Number(val) < 0 ? '-' : ''}Rp ${formatCompact(Math.abs(Number(val || 0)))}`;
 
 // Tahun yang ditampilkan di chart & tahun pembanding untuk YoY
 const CURRENT_YEAR = 2026;
@@ -148,18 +165,26 @@ const Dashboard = () => {
     try { return localStorage.getItem('dashboard.showReport') === 'true'; } catch { return false; }
   });
   const toggleReport = () => {
-    setShowReport(prev => {
-      const next = !prev;
-      try { localStorage.setItem('dashboard.showReport', String(next)); } catch { /* abaikan */ }
-      return next;
-    });
+    const next = !showReport;
+    // Setiap masuk mode EX, Pilihan kembali ke default (tahun & bulan hari ini)
+    if (next) setReportSel(defaultReportSel(new Date().getFullYear()));
+    try { localStorage.setItem('dashboard.showReport', String(next)); } catch { /* abaikan */ }
+    setShowReport(next);
   };
+
+  // Pilihan di Laporan Profitabilitas (Jenis Produk, Principal, Show, Tipe, Tahun, Bulan/Quarter) -> ikut memfilter chart
+  const [reportSel, setReportSel] = useState(() => defaultReportSel(new Date().getFullYear()));
+  // Tombol EX & tabel laporan hanya tersedia saat periode Accumulative sudah di-Apply
+  const isAccumulativeView = appliedFilters.periode === 'Accumulative';
+  const reportActive = isAccumulativeView && showReport;
 
   const [dashboardData, setDashboardData] = useState({
     summary: { sales: 0, cost: 0, rate: 0 },
     trendData: {},
     prevYearData: {},
     groupStats: [],
+    byQuarter: false,
+    periodLabel: '',
   });
 
 
@@ -167,22 +192,39 @@ const Dashboard = () => {
   // 3. LOGIKA FILTERING & AGREGASI (DINAMIS)
   // ==========================================
   useEffect(() => {
-    const isAccumulative = appliedFilters.periode === 'Accumulative';
+    // Saat tabel laporan tampil, Pilihan di tabel yang menentukan chart:
+    // Jenis Produk & Principal -> data, Tahun & Bulan/Quarter -> rentang, Show -> per bulan / per quarter,
+    // Tipe Cumulative -> akumulasi berjalan (YTD), Position -> nilai per periode
+    const isAccumulative = reportActive ? reportSel.type === 'Cumulative' : appliedFilters.periode === 'Accumulative';
+    const byQuarter = reportActive && reportSel.show === 'Quarterly';
+    const year = reportActive ? Number(reportSel.year) : CURRENT_YEAR;
+    // Data ditarik s.d. bulan terakhir yang sudah lewat: tahun berjalan -> bulan lalu (mis. sekarang Nov -> Jan s.d. Okt),
+    // tahun sebelumnya -> s.d. Desember. Jika Bulan/Quarter di laporan lebih awal, pakai yang lebih awal.
+    const now = new Date();
+    const lastClosedMonth = year < now.getFullYear() ? 11 : year === now.getFullYear() ? now.getMonth() - 1 : -1;
+    const endMonth = Math.min(reportActive ? periodEndMonth(reportSel) : 11, lastClosedMonth);
+    const periodLabel = endMonth >= 0 ? `${MONTHS[endMonth]} ${year}` : `${year}`;
+    const principals = reportActive && reportSel.principal !== 'Both' ? [reportSel.principal] : PRINCIPAL_LIST;
 
     const allYearsDB = DUMMY_DB.filter(item => {
-      const passJenis = appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
+      const passJenis = reportActive
+        ? reportSel.product === 'All' || item.group === reportSel.product
+        : appliedFilters.jenis === 'All' || item.group === JENIS_TO_GROUP[appliedFilters.jenis];
       const passRegion = appliedFilters.region === 'All' || item.region === appliedFilters.region;
-      return passJenis && passRegion;
+      const passMonth = Number(item.date.slice(5, 7)) - 1 <= endMonth;
+      return passJenis && passRegion && passMonth;
     });
-    const globalFilteredDB = allYearsDB.filter(item => item.date.startsWith(`${CURRENT_YEAR}-`));
-    const prevYearDB = allYearsDB.filter(item => item.date.startsWith(`${PREV_YEAR}-`));
+    const globalFilteredDB = allYearsDB.filter(item => item.date.startsWith(`${year}-`));
+    const prevYearDB = allYearsDB.filter(item => item.date.startsWith(`${year - 1}-`));
 
     if (globalFilteredDB.length === 0) {
       setDashboardData({
         summary: { sales: 0, cost: 0, rate: 0 },
         trendData: {},
         prevYearData: {},
-        groupStats: []
+        groupStats: [],
+        byQuarter,
+        periodLabel,
       });
       return;
     }
@@ -206,8 +248,9 @@ const Dashboard = () => {
       sourceDB.forEach(item => {
         if (item.principal !== principalName) return;
         const d = new Date(item.date);
-        const groupKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const displayLabel = monthsShort[d.getMonth()];
+        const quarterIdx = Math.floor(d.getMonth() / 3);
+        const groupKey = byQuarter ? `${d.getFullYear()}-Q${quarterIdx + 1}` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const displayLabel = byQuarter ? QUARTERS[quarterIdx] : monthsShort[d.getMonth()];
 
         if (!chartMap[groupKey]) {
           chartMap[groupKey] = { name: displayLabel, sortKey: groupKey, salesVolume: 0, salesDomestic: 0, salesInternational: 0, income: 0, cost: 0 };
@@ -266,7 +309,7 @@ const Dashboard = () => {
 
     const trendData = {};
     const prevYearData = {};
-    PRINCIPAL_LIST.forEach(p => {
+    principals.forEach(p => {
       trendData[p] = getTrendData(p, globalFilteredDB);
       prevYearData[p] = getTrendData(p, prevYearDB);
     });
@@ -279,14 +322,21 @@ const Dashboard = () => {
         { name: 'Credit Card', totalSort: Number(creditService.toFixed(2)) }, 
         { name: 'Debit Card', totalSort: Number(debitService.toFixed(2)) }, 
         { name: 'Acquiring', totalSort: Number(acqService.toFixed(2)) }
-      ]
+      ],
+      byQuarter,
+      periodLabel,
     });
-  }, [appliedFilters]);
+  }, [appliedFilters, reportActive, reportSel]);
 
   // ==========================================
   // 4. HANDLERS & CONFIGURATIONS
   // ==========================================
   const handleApply = () => setAppliedFilters({ ...filters });
+  // Filter Jenis disembunyikan saat Accumulative (filtering jenis ada di tabel laporan)
+  const hideJenisFilter = filters.periode === 'Accumulative';
+  const handlePeriodeChange = (periode) => {
+    setFilters(prev => ({ ...prev, periode, jenis: periode === 'Accumulative' ? 'All' : prev.jenis }));
+  };
   const handleReset = () => {
     setFilters({ ...DEFAULT_FILTERS });
     setAppliedFilters({ ...DEFAULT_FILTERS });
@@ -381,7 +431,8 @@ const Dashboard = () => {
           </nav>
         </div>
 
-        {/* TOMBOL LAPORAN (hanya di halaman Dashboard): klik = nyala & laporan muncul, klik lagi = mati & laporan hilang */}
+        {/* TOMBOL LAPORAN (hanya di halaman Dashboard & periode Accumulative): klik = nyala & laporan muncul, klik lagi = mati & laporan hilang */}
+        {isAccumulativeView ? (
         <button
           onClick={toggleReport}
           title={showReport ? 'Sembunyikan Laporan Profitabilitas' : 'Tampilkan Laporan Profitabilitas'}
@@ -393,6 +444,7 @@ const Dashboard = () => {
           </span>
           <span className="text-[10px] font-semibold">EX</span>
         </button>
+        ) : <div className="mb-auto" />}
         <div className="flex flex-col gap-4 relative">
           <div className="relative flex justify-center">
             <button onClick={() => setIsProfileOpen(!isProfileOpen)} className={`bg-white rounded-full w-14 h-14 flex items-center justify-center shadow-[0_8px_30px_rgb(0,0,0,0.12)] md:shadow-sm border text-slate-600 hover:bg-slate-50 transition-colors relative z-20 ${isProfileOpen ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-100'}`}>
@@ -432,13 +484,14 @@ const Dashboard = () => {
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Periode</label>
                 <div className="relative">
-                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.periode} onChange={(e) => setFilters({...filters, periode: e.target.value})}>
+                  <select className="w-full sm:w-[160px] text-[13px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 outline-none appearance-none cursor-pointer hover:border-blue-400 transition-colors shadow-sm" value={filters.periode} onChange={(e) => handlePeriodeChange(e.target.value)}>
                     {PERIODE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
               </div>
 
+              {!hideJenisFilter && (
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Jenis</label>
                 <div className="relative">
@@ -449,6 +502,7 @@ const Dashboard = () => {
                   <ChevronDown size={14} className="text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
                 </div>
               </div>
+              )}
 
               <div className="flex flex-col w-full sm:w-auto">
                 <label className="text-[12px] font-bold text-[#1e3a8a] mb-1.5">Domestic / International</label>
@@ -469,7 +523,15 @@ const Dashboard = () => {
           {/* MAIN CHARTS AREA: GRID LINE CHART PER PRINCIPAL (SALES VOLUME, INCOME, COST, MARGIN) */}
           <div className="flex flex-col gap-6 pb-10">
             {/* LAPORAN PROFITABILITAS PRINCIPAL (di atas grid Visa) — muncul jika tombol Mode di sidebar ON */}
-            {showReport && <ProfitabilityReport db={DUMMY_DB} />}
+            {reportActive && <ProfitabilityReport db={DUMMY_DB} sel={reportSel} onChange={setReportSel} />}
+
+            {/* Keterangan satuan Rupiah */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 bg-white rounded-xl border border-slate-200/60 px-4 py-2">
+              <span className="font-semibold text-slate-700">Satuan (Rp):</span>
+              {[...UNIT_SCALES].reverse().map(s => (
+                <span key={s.suffix}><b className="text-slate-700">{s.suffix}</b> = {s.label} ({s.value.toLocaleString('id-ID')})</span>
+              ))}
+            </div>
 
             {Object.keys(dashboardData.trendData).length === 0 && (
               <div className="bg-white rounded-2xl border border-slate-200/60 p-10 text-center text-[13px] text-slate-400">Tidak ada data untuk filter ini.</div>
@@ -508,7 +570,7 @@ const Dashboard = () => {
                       const goodWhenUp = metric.key !== 'cost';
                       const changeItems = [
                         { label: 'YoY', pct: pctChange(lastYearVal) },
-                        { label: 'MoM', pct: pctChange(prevVal) },
+                        { label: dashboardData.byQuarter ? 'QoQ' : 'MoM', pct: pctChange(prevVal) },
                       ].filter(c => c.pct !== null);
                       // P/L: 4 interval -> 3 di atas nol (profit) & 1 di bawah nol (loss), jadi garis nol turun ke bawah.
                       // Line % pakai sumbu kanan tersembunyi dengan nol yang sejajar.
@@ -526,8 +588,8 @@ const Dashboard = () => {
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="text-[13px] font-bold text-slate-700">{metric.label}</p>
-                              <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1">{formatRupiah(lastVal)}</p>
-                              <p className="text-[10px] text-slate-400">Periode</p>
+                              <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1" title={formatRupiah(lastVal)}>{formatRupiahCompact(lastVal)}</p>
+                              <p className="text-[10px] text-slate-400">Periode - {dashboardData.periodLabel}</p>
                             </div>
                             {changeItems.length > 0 && (
                               <div className="flex gap-3 text-right">

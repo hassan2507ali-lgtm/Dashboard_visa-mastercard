@@ -1,19 +1,19 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { capPct } from './chartAxis';
+import { MONTHS, QUARTERS, periodEndMonth } from './reportPeriod';
 
 // ==========================================
 // LAPORAN PROFITABILITAS PRINCIPAL
 // Pilihan, Pembanding (otomatis), Informasi Periode, dan tabel Segmen (Domestic / Int'l / Total + Δ)
 // ==========================================
 
-const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
-const PRODUCT_OPTIONS = ['Credit Card', 'Debit Card', 'Acquiring'];
-const PRINCIPAL_OPTIONS = ['Visa', 'Mastercard'];
+const PRODUCT_OPTIONS = ['All', 'Credit Card', 'Debit Card', 'Acquiring'];
+const PRINCIPAL_OPTIONS = ['Both', 'Visa', 'Mastercard'];
 const SHOW_OPTIONS = ['Monthly', 'Quarterly'];
-const TYPE_OPTIONS = ['Cumulative', 'Non Cumulative'];
+// Cumulative = YTD (Jan s.d. periode terpilih), Position = hanya periode terpilih
+const TYPE_OPTIONS = ['Cumulative', 'Position'];
 
 const pad = (n) => String(n).padStart(2, '0');
 const lastDayOf = (year, monthIdx) => new Date(year, monthIdx + 1, 0).getDate();
@@ -21,7 +21,7 @@ const lastDayOf = (year, monthIdx) => new Date(year, monthIdx + 1, 0).getDate();
 // Rentang tanggal berdasarkan Show (Monthly/Quarterly), Tipe (Cumulative = YTD), Tahun, Bulan, Quarter
 const buildPeriod = ({ show, type, year, month, quarter }) => {
   const y = Number(year);
-  const endMonth = show === 'Monthly' ? MONTHS.indexOf(month) : (QUARTERS.indexOf(quarter) + 1) * 3 - 1;
+  const endMonth = periodEndMonth({ show, month, quarter });
   const periodStartMonth = show === 'Monthly' ? endMonth : endMonth - 2;
   const startMonth = type === 'Cumulative' ? 0 : periodStartMonth;
   const endDay = lastDayOf(y, endMonth);
@@ -53,7 +53,8 @@ const emptyBucket = () => ({ sv: 0, interchange: 0, mdr: 0, kurs: 0, serviceFee:
 const aggregate = (db, { principal, product, start, end }) => {
   const res = { Domestic: emptyBucket(), International: emptyBucket(), days: new Set() };
   db.forEach(item => {
-    if (item.principal !== principal || item.group !== product) return;
+    if (principal === 'Both' ? !['Visa', 'Mastercard'].includes(item.principal) : item.principal !== principal) return;
+    if (product !== 'All' && item.group !== product) return;
     if (item.date < start || item.date > end) return;
     const b = res[item.region === 'International' ? 'International' : 'Domestic'];
     const isIntl = item.region === 'International';
@@ -153,12 +154,9 @@ const InfoRow = ({ label, children }) => (
   </div>
 );
 
-const ProfitabilityReport = ({ db }) => {
+const ProfitabilityReport = ({ db, sel, onChange }) => {
   const years = useMemo(() => [...new Set(db.map(d => d.date.slice(0, 4)))].sort(), [db]);
-  const latestYear = years[years.length - 1];
-
-  const [sel, setSel] = useState({ product: 'Credit Card', principal: 'Mastercard', show: 'Quarterly', type: 'Cumulative', year: latestYear, month: 'Juni', quarter: 'Q1' });
-  const set = (key) => (v) => setSel(s => ({ ...s, [key]: v }));
+  const set = (key) => (v) => onChange(s => ({ ...s, [key]: v }));
   const isMonthly = sel.show === 'Monthly';
 
   const mainPeriod = buildPeriod(sel);

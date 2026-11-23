@@ -29,7 +29,7 @@ const tanggalSortValue = (r) => (MONTH_ORDER[r.month] || 0) * 100 + (parseInt(r.
 
 // ==========================================
 // KONFIGURASI KOLOM TABEL (urutan tampil di layar)
-// Utama: Principal, Type, Region, Billing Line, Rate, Unit, Amount, Description, Tagging
+// Utama: Principal, Type, Region, Key (Billing Line + ICA + Tier Event), Rate, Unit, Amount, Description, Group, Tanggal
 // key = field data untuk filter & sort header (ala Excel); number = kolom angka
 // ==========================================
 const TABLE_COLUMNS = [
@@ -40,25 +40,14 @@ const TABLE_COLUMNS = [
   { key: 'region', header: 'REGION', className: 'py-4 px-5', render: r => (
     <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase whitespace-nowrap ${r.region === 'International' ? 'bg-indigo-100 text-indigo-700' : 'bg-sky-100 text-sky-700'}`}>{r.region}</span>
   ) },
-  { key: 'billingLine', header: 'BILLING LINE', className: 'py-4 px-5 text-[13px] font-bold text-slate-700', render: r => r.billingLine },
+  { key: 'key', header: 'KEY', className: 'py-4 px-5 text-[13px] font-bold text-slate-700 whitespace-nowrap', render: r => r.key },
   { key: 'rate', number: true, header: 'RATE', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => formatDecimal(r.rate) },
   { key: 'unit', number: true, header: 'UNIT', right: true, className: 'py-4 px-5 text-[13px] font-semibold text-slate-700 text-right', render: r => r.unit.toLocaleString('id-ID') },
   { key: 'total', number: true, header: 'AMOUNT', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.total) },
   { key: 'description', header: 'DESCRIPTION', className: 'py-4 px-5 text-[13px] font-medium text-slate-500 max-w-[200px] truncate', render: r => <span title={r.description}>{r.description}</span> },
-  { key: 'tagging', header: 'TAGGING', className: 'py-4 px-5 text-[13px] font-bold text-slate-800', render: r => r.tagging },
-  // Kolom lainnya (tetap ditampilkan)
   { key: 'group', header: 'GROUP', className: 'py-4 px-5 text-[13px] font-bold', render: r => <span className={r.group.includes('Debit') ? 'text-blue-600' : 'text-slate-600'}>{r.group}</span> },
-  { key: 'channel', header: 'CHANNEL', className: 'py-4 px-5', render: r => (
-    <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-wide uppercase whitespace-nowrap ${r.channel === 'ATM' ? 'bg-violet-100 text-violet-700' : r.channel === 'CNP' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>{r.channel}</span>
-  ) },
-  { key: 'status', header: 'STATUS', className: 'py-4 px-5 text-[13px] font-semibold text-slate-500', render: r => r.status },
   // Filter Tanggal per bulan (pengganti filter Start / End Periode)
   { key: 'tanggal', header: 'TANGGAL', filterValue: r => r.month, filterOrder: m => MONTH_ORDER[m] || 0, sortValue: tanggalSortValue, className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.tanggal },
-  { key: 'ica', header: 'ICA', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.ica },
-  { key: 'eqvIdr', number: true, header: 'EQV IDR', right: true, className: 'py-4 px-5 text-[13px] font-bold text-slate-800 text-right', render: r => formatDecimal(r.eqvIdr) },
-  { key: 'principalFeeType', header: 'PRINCIPAL FEE TYPE', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalFeeType },
-  { key: 'principalCategory', header: 'PRINCIPAL CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalCategory },
-  { key: 'principalSubCategory', header: 'PRINCIPAL SUB CATEGORY', className: 'py-4 px-5 text-[13px] font-medium text-slate-500', render: r => r.principalSubCategory },
 ];
 const COLUMN_BY_KEY = Object.fromEntries(TABLE_COLUMNS.map(c => [c.key, c]));
 
@@ -167,11 +156,9 @@ const DetailBilling = () => {
   // DOWNLOAD DATA TABEL SESUAI FILTER (CSV / XLSX) — nilai mentah, bukan teks yang sudah diformat
   // ==========================================
   const EXPORT_FIELDS = [
-    ['Principal', 'principal'], ['Type', 'jenisTransaksi'], ['Region', 'region'], ['Billing Line', 'billingLine'],
-    ['Rate', 'rate'], ['Unit', 'unit'], ['Amount', 'total'], ['Description', 'description'], ['Tagging', 'tagging'],
-    ['Group', 'group'], ['Channel', 'channel'], ['Status', 'status'], ['Tanggal', 'tanggal'], ['ICA', 'ica'],
-    ['Eqv IDR', 'eqvIdr'], ['Principal Fee Type', 'principalFeeType'], ['Principal Category', 'principalCategory'],
-    ['Principal Sub Category', 'principalSubCategory'],
+    ['Principal', 'principal'], ['Type', 'jenisTransaksi'], ['Region', 'region'], ['Key', 'key'],
+    ['Rate', 'rate'], ['Unit', 'unit'], ['Amount', 'total'], ['Description', 'description'],
+    ['Group', 'group'], ['Tanggal', 'tanggal'],
   ];
   const handleDownload = (format) => {
     setIsDownloadOpen(false);
@@ -332,7 +319,7 @@ const DetailBilling = () => {
 
             <div className="w-full overflow-x-auto">
               {/* Kolomnya diperbanyak, min-w dilebarkan agar tidak terjepit */}
-              <table className="w-full text-left border-collapse min-w-[2000px]">
+              <table className="w-full text-left border-collapse min-w-[1300px]">
                 <thead className="bg-[#f8fafc]">
                   <tr>
                     {billingMode !== 'All' && (

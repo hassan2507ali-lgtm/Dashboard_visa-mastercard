@@ -13,6 +13,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine
 } from 'recharts';
 import ProfitabilityReport from './ProfitabilityReport';
+import { applyVisaExcelData } from './visaPrincipalData';
 import { defaultReportSel, periodEndMonth, MONTHS, QUARTERS } from './reportPeriod';
 import { AXIS_INTERVALS, buildPctTicks, buildAmountTicksBelowLine, formatPctTick, yAxisBase, niceStep, capPct } from './chartAxis';
 
@@ -197,7 +198,8 @@ const generateDummyData = () => {
   return data;
 };
 
-const DUMMY_DB = generateDummyData();
+// Visa: Service Fee, Interchange Fee & Interchange Income memakai angka Excel (lihat visaPrincipalData.js)
+const DUMMY_DB = applyVisaExcelData(generateDummyData());
 
 const Dashboard = () => {
   const navigate = useNavigate();

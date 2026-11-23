@@ -15,6 +15,7 @@ import LogoMandiri from './danatara.png';
 
 import { AXIS_INTERVALS, buildPctTicks, buildAmountTicksBelowLine, formatPctTick, yAxisBase, capPct } from './chartAxis';
 import { BILLING_HIGHLIGHTS, BILLING_SUMMARY, SUMMARY_STATUSES, TOP_BILLING_LIMIT } from './billingData';
+import { visaMonth } from './visaPrincipalData';
 
 // ==========================================
 // 1. GENERATE DUMMY DATA UNTUK GRAFIK
@@ -69,9 +70,24 @@ const generateChartData = (scale = 1) => {
   return data;
 };
 
+// Visa: angka bulanan dari Excel (visaPrincipalData.js) dibagi rata ke hari-hari di bulan itu.
+// Interchange Fee -> Cost = Interchange Fee, Income = Interchange Income.
+// Service Fee     -> Cost = Service Fee, Income = 0 (Service Fee tidak punya income).
+// Sales Volume = placeholder bersama (sama dengan Dashboard). Bulan tanpa data Excel dilewati.
+// Jumlah billing (billingIncome / billingCost) masih dummy dari generateChartData.
+const generateVisaChartData = (section) => generateChartData(1).flatMap(item => {
+  const [y, m] = item.monthKey.split('-').map(Number);
+  const v = visaMonth(y, m - 1);
+  const cost = v && (section === 'interchange' ? v.interchangeFee : v.serviceFee);
+  if (cost == null) return [];
+  const days = new Date(y, m, 0).getDate();
+  const income = section === 'interchange' ? (v.interchangeIncome || 0) : 0;
+  return [{ ...item, cost: cost / days, income: income / days, salesVolume: v.salesVolume / days }];
+});
+
 // Data chart dipisah per principal & jenis transaksi (Service Fee / Interchange Fee)
 const CHART_DB = {
-  Visa: { serviceFee: generateChartData(0.6), interchange: generateChartData(0.4) },
+  Visa: { serviceFee: generateVisaChartData('serviceFee'), interchange: generateVisaChartData('interchange') },
   Mastercard: { serviceFee: generateChartData(0.5), interchange: generateChartData(0.5) },
 };
 const CHART_PRINCIPALS = ['Visa', 'Mastercard'];
@@ -96,8 +112,8 @@ const toInputDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart
 const TODAY = new Date();
 const DEFAULT_START_DATE = `${TODAY.getFullYear()}-01-01`;
 const DEFAULT_END_DATE = toInputDate(TODAY);
-const DATE_MIN = CHART_DB.Visa.serviceFee[0].dateString;
-const DATE_MAX = CHART_DB.Visa.serviceFee[CHART_DB.Visa.serviceFee.length - 1].dateString;
+const DATE_MIN = CHART_DB.Mastercard.serviceFee[0].dateString;
+const DATE_MAX = CHART_DB.Mastercard.serviceFee[CHART_DB.Mastercard.serviceFee.length - 1].dateString;
 
 // Filter Tipe: Position = nilai per bulan, Accumulative = total berjalan sejak Start Date
 const TYPE_OPTIONS = ['Position', 'Accumulative'];

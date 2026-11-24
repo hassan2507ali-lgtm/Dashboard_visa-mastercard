@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { 
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer 
+  Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 
 // === IMPORT GAMBAR LOGO DARI FOLDER SRC ===
@@ -93,8 +93,36 @@ const CHART_DB = {
 const CHART_PRINCIPALS = ['Visa', 'Mastercard'];
 const CHART_SECTIONS = [
   { key: 'interchange', title: 'Interchange Fee', sources: ['interchange'] },
-  { key: 'serviceFee', title: 'Service Fee', sources: ['serviceFee'] },
+  { key: 'serviceFee', title: 'Service Fee', sources: ['serviceFee'], byProduct: true },
 ];
+
+// Bar Service Fee ditumpuk per jenis produk.
+// Visa: Debit, Credit, Acquiring (nuansa biru, sama dengan bar stacked di Dashboard).
+// Mastercard: hanya Credit & Acquiring (nuansa kuning - oranye - cokelat, warna khas Mastercard).
+const SERVICE_FEE_PRODUCTS = {
+  Visa: [
+    { key: 'debit', label: 'Debit', color: '#06b6d4' },
+    { key: 'credit', label: 'Credit', color: '#6366f1' },
+    { key: 'acquiring', label: 'Acquiring', color: '#1e3a8a' },
+  ],
+  Mastercard: [
+    { key: 'credit', label: 'Credit', color: '#f59e0b' },    // kuning / amber
+    { key: 'acquiring', label: 'Acquiring', color: '#9a3412' }, // oranye cokelat
+  ],
+};
+// Dummy porsi Service Fee per produk per bulan (dibuat sekali lalu di-cache, total = 100%)
+const PRODUCT_SHARE_RANGE = { debit: [0.18, 0.28], credit: [0.3, 0.42], acquiring: [0.35, 0.48] };
+const productShareCache = {};
+const getProductShares = (principal, monthKey) => {
+  const cacheKey = `${principal}-${monthKey}`;
+  if (!productShareCache[cacheKey]) {
+    const products = SERVICE_FEE_PRODUCTS[principal];
+    const raw = products.map(p => { const [lo, hi] = PRODUCT_SHARE_RANGE[p.key]; return lo + Math.random() * (hi - lo); });
+    const total = raw.reduce((a, b) => a + b, 0);
+    productShareCache[cacheKey] = Object.fromEntries(products.map((p, i) => [p.key, raw[i] / total]));
+  }
+  return productShareCache[cacheKey];
+};
 
 const PRINCIPAL_COLOR = { Visa: '#1e3a8a', Mastercard: '#ea580c' };
 
@@ -140,10 +168,10 @@ const formatAxisAmount = (v) => {
 const RATIO_LINE_COLOR = { Visa: '#f59e0b', Mastercard: '#0f766e' };
 
 // Pop up: bar = amount, line = % (Cost / SV)
-const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
+const SimpleTooltip = ({ active, payload, label, metricLabel, products }) => {
   if (!active || !payload || payload.length === 0) return null;
   const row = payload[0].payload;
-  const barColor = payload.find(p => p.dataKey === 'value')?.color;
+  const barColor = products ? products[products.length - 1].color : payload.find(p => p.dataKey === 'value')?.color;
   const lineColor = payload.find(p => p.dataKey === 'costRatio')?.color;
   return (
     <div className="bg-white/95 border border-slate-200 rounded-xl shadow-md px-3 py-2 text-[12px]">
@@ -153,6 +181,14 @@ const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
         <span className="text-slate-600 font-medium">Amount {metricLabel}:</span>
         <span className="font-bold text-slate-800">{formatCurrency(row.value)}</span>
       </div>
+      {/* Rincian per produk (Service Fee) */}
+      {products && products.map(p => (
+        <div key={p.key} className="flex items-center gap-2 pl-4">
+          <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: p.color }}></div>
+          <span className="text-slate-500">{p.label}:</span>
+          <span className="font-semibold text-slate-700">{formatCurrency(row[p.key])}</span>
+        </div>
+      ))}
       <div className="flex items-center gap-2">
         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lineColor }}></div>
         <span className="text-slate-600 font-medium">Cost / SV:</span>
@@ -163,7 +199,9 @@ const SimpleTooltip = ({ active, payload, label, metricLabel }) => {
 };
 
 // Grid Service Fee / Interchange Fee: bar = amount, line = % (Cost / SV)
-const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
+const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) => {
+  // Service Fee: bar ditumpuk per produk (Visa 3 produk, Mastercard 2 produk)
+  const products = byProduct ? SERVICE_FEE_PRODUCTS[principal] : null;
   const metricKey = chartFilters.view === 'Income' ? 'income' : 'cost';
   const metricLabel = metricKey === 'income' ? 'Income' : 'Cost';
   const isAccum = chartFilters.type === 'Accumulative';
@@ -179,18 +217,23 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       const key = item.monthKey;
       if (!aggMap[key]) {
         aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }), value: 0, cost: 0, salesVolume: 0 };
+        (products || []).forEach(p => { aggMap[key][p.key] = 0; });
       }
       aggMap[key].value += item[metricKey];
       aggMap[key].cost += item.cost;
       aggMap[key].salesVolume += item.salesVolume;
+      if (products) {
+        const shares = getProductShares(principal, key);
+        products.forEach(p => { aggMap[key][p.key] += item[metricKey] * shares[p.key]; });
+      }
     });
     const months = Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     // Accumulative: setiap bulan = total berjalan dari bulan pertama di rentang filter
     if (isAccum) {
-      let value = 0, cost = 0, salesVolume = 0;
+      const sumKeys = ['value', 'cost', 'salesVolume', ...(products || []).map(p => p.key)];
+      const running = Object.fromEntries(sumKeys.map(k => [k, 0]));
       months.forEach(d => {
-        value += d.value; cost += d.cost; salesVolume += d.salesVolume;
-        Object.assign(d, { value, cost, salesVolume });
+        sumKeys.forEach(k => { running[k] += d[k]; d[k] = running[k]; });
       });
     }
     return months.map(d => ({
@@ -198,7 +241,7 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       // % Cost terhadap Sales Volume, dibatasi maks 3%
       costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
     }));
-  }, [chartFilters, principal, sources, metricKey, isAccum]);
+  }, [chartFilters, principal, sources, metricKey, isAccum, products]);
 
   const last = data[data.length - 1];
   const lastVal = last ? last.value : 0;
@@ -254,7 +297,15 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
       <div className="flex justify-between items-start gap-3">
         <div className="min-w-0">
           <p className="text-[13px] font-bold text-slate-700">{title}</p>
-          <p className="text-[20px] font-bold text-[#0f172a] leading-tight mt-1 whitespace-nowrap">{formatCurrency(lastVal)}</p>
+          {/* Sama seperti Dashboard: persentase (line Cost / SV periode terakhir) di samping amount */}
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap">{formatCurrency(lastVal)}</p>
+            {last && (
+              <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: ratioColor }}>
+                {last.costRatio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-slate-400">{periodLabel}</p>
         </div>
         {changeItems.length > 0 && (
@@ -280,8 +331,25 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters }) => {
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
               <YAxis yAxisId="amt" {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} tickFormatter={formatAxisAmount} />
               <YAxis yAxisId="pct" orientation="right" {...yAxisBase} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} tickFormatter={formatPctTick} />
-              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} />} cursor={{ fill: '#f8fafc' }} />
-              <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} products={products} />} cursor={{ fill: '#f8fafc' }} />
+              {products ? (
+                <>
+                  {/* Urutan legend: produk (sesuai urutan tumpukan) lalu Cost / SV paling akhir (default Recharts = abjad) */}
+                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={(item) => {
+                    const order = [...products.map(p => p.label), 'Cost / SV'];
+                    const i = order.indexOf(item.value);
+                    return i === -1 ? order.length : i;
+                  }} payload={[
+                    ...products.map(p => ({ value: p.label, type: 'square', color: p.color, id: p.key })),
+                    { value: 'Cost / SV', type: 'line', color: ratioColor, id: 'costRatio' },
+                  ]} />
+                  {products.map((p, i, arr) => (
+                    <Bar key={p.key} yAxisId="amt" dataKey={p.key} name={p.label} stackId="product" fill={p.color} radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
+                  ))}
+                </>
+              ) : (
+                <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              )}
               <Line yAxisId="pct" type="linear" dataKey="costRatio" name="Cost / SV" stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -543,6 +611,7 @@ const DetailCost = () => {
                       principal={principal}
                       title={section.title}
                       sources={section.sources}
+                      byProduct={section.byProduct}
                       chartFilters={chartFilters}
                     />
                   );

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Menu, CreditCard, Book, ShoppingCart, FileText, 
   User, ChevronUp, ChevronDown, LogOut, Filter, 
   CheckCircle2, AlertTriangle, AlertCircle, Settings, X,
-  CardSim, Table2
+  CardSim, Table2, Check
 } from 'lucide-react';
 
 // RECHARTS UNTUK LINE CHART PER PRINCIPAL
@@ -231,7 +231,7 @@ const Dashboard = () => {
   const isAccumulativeView = appliedFilters.periode === 'Accumulative';
   const reportActive = isAccumulativeView && showReport;
   // Chart Visa / Mastercard baru ikut Pilihan tabel setelah user mengubah filter di tabel.
-  // Sebelumnya (default saat Accumulative di-Apply) chart sama dengan tampilan Monthly.
+  // Sebelumnya (default saat Accumulative di-Apply) chart langsung tampil akumulasi berjalan (YTD).
   const [reportTouched, setReportTouched] = useState(false);
   const chartFromReport = reportActive && reportTouched;
   const handleReportChange = (update) => { setReportTouched(true); setReportSel(update); };
@@ -253,8 +253,11 @@ const Dashboard = () => {
     // Saat tabel laporan tampil, Pilihan di tabel yang menentukan chart:
     // Jenis Produk & Principal -> data, Tahun & Bulan/Quarter -> rentang, Show -> per bulan / per quarter,
     // Tipe Cumulative -> akumulasi berjalan (YTD), Position -> nilai per periode
-    // Tanpa filter tabel, chart selalu tampil seperti Monthly (nilai per bulan)
-    const isAccumulative = chartFromReport && reportSel.type === 'Cumulative';
+    // Tanpa filter tabel: Show As Accumulative -> chart langsung akumulasi berjalan (YTD),
+    // Show As Monthly -> nilai per bulan
+    const isAccumulative = chartFromReport
+      ? reportSel.type === 'Cumulative'
+      : appliedFilters.periode === 'Accumulative';
     const byQuarter = chartFromReport && reportSel.show === 'Quarterly';
     const year = chartFromReport ? Number(reportSel.year) : CURRENT_YEAR;
     // Data ditarik s.d. bulan terakhir yang sudah lewat: tahun berjalan -> bulan lalu (mis. sekarang Nov -> Jan s.d. Okt),
@@ -390,7 +393,19 @@ const Dashboard = () => {
   // ==========================================
   // 4. HANDLERS & CONFIGURATIONS
   // ==========================================
-  const handleApply = () => { setAppliedFilters({ ...filters }); setReportTouched(false); };
+  // Feedback tombol Apply: langsung apply, tombol jadi 'Applied ✓' sebentar lalu kembali normal
+  const [applyState, setApplyState] = useState('idle');
+  const applyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(applyTimer.current), []);
+  // Ada perubahan filter yang belum di-Apply -> tombol disorot
+  const isDirty = Object.keys(filters).some(k => filters[k] !== appliedFilters[k]);
+  const handleApply = () => {
+    setAppliedFilters({ ...filters });
+    setReportTouched(false);
+    setApplyState('done');
+    clearTimeout(applyTimer.current);
+    applyTimer.current = setTimeout(() => setApplyState('idle'), 1500);
+  };
   const handlePeriodeChange = (periode) => setFilters(prev => ({ ...prev, periode }));
   const handleReset = () => {
     setFilters({ ...DEFAULT_FILTERS });
@@ -592,7 +607,20 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <button onClick={handleApply} className="bg-[#0f172a] hover:bg-black text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-all shadow-sm w-full sm:w-auto h-[38px]">Apply</button>
+              <button
+                onClick={handleApply}
+                title={isDirty ? 'Ada filter yang belum di-Apply' : undefined}
+                className={`relative flex items-center justify-center gap-1.5 text-white text-[13px] font-semibold px-6 py-2 rounded-lg transition-colors duration-300 shadow-sm w-full sm:w-auto sm:min-w-[112px] h-[38px] ${
+                  applyState === 'done'
+                    ? 'bg-emerald-600'
+                    : isDirty
+                      ? 'bg-blue-600 hover:bg-blue-700 ring-2 ring-blue-200'
+                      : 'bg-[#0f172a] hover:bg-black'
+                }`}
+              >
+                {applyState === 'done' && <Check size={14} strokeWidth={3} />}
+                {applyState === 'done' ? 'Applied' : 'Apply'}
+              </button>
               <button onClick={handleReset} className="text-[#1e3a8a] hover:text-blue-800 hover:underline text-[13px] font-semibold px-2 py-2 transition-all w-full sm:w-auto h-[38px] bg-transparent border-none">Reset</button>
             </div>
           </header>

@@ -13,7 +13,7 @@ export const defaultReportSel = (year, now = new Date()) => ({
   product: 'All',
   principal: 'Both',
   show: 'Monthly',
-  type: 'Position',
+  type: 'Cumulative',
   year: String(year),
   month: 'All', // rentang bulan (Show = Monthly)
   quarter: QUARTERS[Math.floor(now.getMonth() / 3)], // quarter hari ini (dipakai saat Show = Quarterly)

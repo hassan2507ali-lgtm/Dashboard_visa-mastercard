@@ -91,10 +91,6 @@ const CHART_DB = {
   Mastercard: { serviceFee: generateChartData(0.5), interchange: generateChartData(0.5) },
 };
 const CHART_PRINCIPALS = ['Visa', 'Mastercard'];
-const CHART_SECTIONS = [
-  { key: 'interchange', title: 'Interchange Fee', sources: ['interchange'] },
-  { key: 'serviceFee', title: 'Service Fee', sources: ['serviceFee'], byProduct: true },
-];
 
 // Bar Service Fee ditumpuk per jenis produk.
 // Visa: Debit, Credit, Acquiring (nuansa biru, sama dengan bar stacked di Dashboard).
@@ -123,6 +119,75 @@ const getProductShares = (principal, monthKey) => {
   }
   return productShareCache[cacheKey];
 };
+
+// Komponen Income (sama dengan Dashboard): Interchange Fee & ATM, MDR, Kurs.
+// Urutan = urutan legend & tooltip. Tumpukan bar dari bawah: Kurs (1) -> MDR (2) -> Interchange Fee & ATM (3).
+const INCOME_COMPONENTS = {
+  Visa: [
+    { key: 'incomeInterchange', label: 'Interchange Fee & ATM', color: '#1e3a8a' },
+    { key: 'incomeMdr', label: 'MDR', color: '#6366f1' },
+    { key: 'incomeKurs', label: 'Kurs', color: '#06b6d4' },
+  ],
+  Mastercard: [
+    { key: 'incomeInterchange', label: 'Interchange Fee & ATM', color: '#9a3412' },
+    { key: 'incomeMdr', label: 'MDR', color: '#ea580c' },
+    { key: 'incomeKurs', label: 'Kurs', color: '#f59e0b' },
+  ],
+};
+// Dummy MDR & Kurs per bulan, relatif terhadap Interchange Income (belum ada data asli)
+const incomeFactorCache = {};
+const getIncomeFactors = (principal, monthKey) => {
+  const cacheKey = `${principal}-${monthKey}`;
+  if (!incomeFactorCache[cacheKey]) {
+    incomeFactorCache[cacheKey] = { mdr: 0.25 + Math.random() * 0.15, kurs: 0.3 + Math.random() * 0.2 };
+  }
+  return incomeFactorCache[cacheKey];
+};
+
+// Data harian per grid. Setiap item: value (amount bar), salesVolume, + field komponen (untuk bar stacked)
+const buildSectionItems = (principal) => ({
+  // --- Cost ---
+  interchangeFee: CHART_DB[principal].interchange.map(item => ({ ...item, value: item.cost })),
+  serviceFee: CHART_DB[principal].serviceFee.map(item => {
+    const shares = getProductShares(principal, item.monthKey);
+    return { ...item, value: item.cost, ...Object.fromEntries(SERVICE_FEE_PRODUCTS[principal].map(p => [p.key, item.cost * shares[p.key]])) };
+  }),
+  // --- Income ---
+  interchangeIncome: CHART_DB[principal].interchange.map(item => ({ ...item, value: item.income })),
+  totalIncome: CHART_DB[principal].interchange.map(item => {
+    const f = getIncomeFactors(principal, item.monthKey);
+    const incomeInterchange = item.income;
+    const incomeMdr = item.income * f.mdr;
+    const incomeKurs = item.income * f.kurs;
+    return { ...item, incomeInterchange, incomeMdr, incomeKurs, value: incomeInterchange + incomeMdr + incomeKurs };
+  }),
+});
+// Grid Income per komponen (bar tunggal, gaya Interchange Income): value = komponen tsb
+const withIncomeComponents = (sections) => ({
+  ...sections,
+  ...Object.fromEntries(['incomeInterchange', 'incomeMdr', 'incomeKurs'].map(k => [k, sections.totalIncome.map(item => ({ ...item, value: item[k] }))])),
+});
+const SECTION_DB = Object.fromEntries(CHART_PRINCIPALS.map(p => [p, withIncomeComponents(buildSectionItems(p))]));
+
+// Threshold per grid (% terhadap Sales Volume) — DUMMY, silakan ganti sesuai ketentuan.
+// Cost  : batas MAKSIMAL (line % di atas threshold = melebihi batas).
+// Income: target MINIMAL (line % di bawah threshold = di bawah target).
+const THRESHOLD_COLOR = '#ef4444';
+// Grid per Category. Visual sama (grid 1 = bar tunggal, grid 2 = bar stacked), hanya data & teks yang berganti.
+// stacks: komponen bar (urutan legend); stackFromBottom: urutan tumpukan dari bawah.
+const COST_SECTIONS = [
+  { key: 'interchangeFee', title: 'Interchange Fee', threshold: { Visa: 1.5, Mastercard: 2.2 } },
+  { key: 'serviceFee', title: 'Service Fee', stacks: SERVICE_FEE_PRODUCTS, threshold: { Visa: 0.6, Mastercard: 2.2 } },
+];
+const INCOME_SECTIONS = [
+  // Income tidak memakai threshold. 3 grid per principal: Interchange Fee & ATM, MDR, Selisih Kurs
+  // (MDR & Selisih Kurs masih dummy, relatif terhadap Interchange Income)
+  { key: 'incomeInterchange', title: 'Interchange Fee & ATM', isIncome: true },
+  { key: 'incomeMdr', title: 'MDR', isIncome: true },
+  { key: 'incomeKurs', title: 'Selisih Kurs', isIncome: true },
+];
+// All = semua grid (Cost lalu Income)
+const SECTIONS_BY_VIEW = { All: [...COST_SECTIONS, ...INCOME_SECTIONS], Cost: COST_SECTIONS, Income: INCOME_SECTIONS };
 
 const PRINCIPAL_COLOR = { Visa: '#1e3a8a', Mastercard: '#ea580c' };
 
@@ -167,12 +232,12 @@ const formatAxisAmount = (v) => {
 // Warna line % (dibedakan dari warna bar)
 const RATIO_LINE_COLOR = { Visa: '#f59e0b', Mastercard: '#0f766e' };
 
-// Pop up: bar = amount, line = % (Cost / SV)
-const SimpleTooltip = ({ active, payload, label, metricLabel, products }) => {
+// Pop up: bar = amount (+ rincian komponen), line = % (Cost / SV atau Income / SV)
+const SimpleTooltip = ({ active, payload, label, metricLabel, stacks, ratioLabel, threshold, isIncome }) => {
   if (!active || !payload || payload.length === 0) return null;
   const row = payload[0].payload;
-  const barColor = products ? products[products.length - 1].color : payload.find(p => p.dataKey === 'value')?.color;
-  const lineColor = payload.find(p => p.dataKey === 'costRatio')?.color;
+  const barColor = stacks ? stacks[0].color : payload.find(p => p.dataKey === 'value')?.color;
+  const lineColor = payload.find(p => p.dataKey === 'ratio')?.color;
   return (
     <div className="bg-white/95 border border-slate-200 rounded-xl shadow-md px-3 py-2 text-[12px]">
       <p className="font-bold text-slate-800 mb-1">{label}</p>
@@ -181,8 +246,8 @@ const SimpleTooltip = ({ active, payload, label, metricLabel, products }) => {
         <span className="text-slate-600 font-medium">Amount {metricLabel}:</span>
         <span className="font-bold text-slate-800">{formatCurrency(row.value)}</span>
       </div>
-      {/* Rincian per produk (Service Fee) */}
-      {products && products.map(p => (
+      {/* Rincian per komponen (bar stacked) */}
+      {stacks && stacks.map(p => (
         <div key={p.key} className="flex items-center gap-2 pl-4">
           <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: p.color }}></div>
           <span className="text-slate-500">{p.label}:</span>
@@ -191,19 +256,35 @@ const SimpleTooltip = ({ active, payload, label, metricLabel, products }) => {
       ))}
       <div className="flex items-center gap-2">
         <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lineColor }}></div>
-        <span className="text-slate-600 font-medium">Cost / SV:</span>
-        <span className="font-bold text-slate-800">{row.costRatio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
+        <span className="text-slate-600 font-medium">{ratioLabel}:</span>
+        <span className="font-bold text-slate-800">{row.ratio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
       </div>
+      {threshold != null && (
+        <div className="flex items-center gap-2">
+          <div className="w-2.5 border-t-2 border-dashed" style={{ borderColor: THRESHOLD_COLOR }}></div>
+          <span className="text-slate-600 font-medium">Threshold:</span>
+          <span className="font-bold text-slate-800">{threshold.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
+          {/* Cost di atas batas / Income di bawah target -> diberi tanda merah */}
+          {(isIncome ? row.ratio < threshold : row.ratio > threshold) && (
+            <span className="font-semibold" style={{ color: THRESHOLD_COLOR }}>{isIncome ? '(di bawah target)' : '(melebihi)'}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
-// Grid Service Fee / Interchange Fee: bar = amount, line = % (Cost / SV)
-const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) => {
-  // Service Fee: bar ditumpuk per produk (Visa 3 produk, Mastercard 2 produk)
-  const products = byProduct ? SERVICE_FEE_PRODUCTS[principal] : null;
-  const metricKey = chartFilters.view === 'Income' ? 'income' : 'cost';
-  const metricLabel = metricKey === 'income' ? 'Income' : 'Cost';
+// Grid Interchange / Service Fee (Cost) atau Interchange Income / Total Income (Income):
+// bar = amount, line = % terhadap Sales Volume
+const SimpleFeeChart = ({ principal, section, chartFilters }) => {
+  // Label & arah warna mengikuti jenis grid (bukan filter), supaya benar saat Category = All
+  const isIncome = !!section.isIncome;
+  const metricLabel = isIncome ? 'Income' : 'Cost';
+  const ratioLabel = isIncome ? 'Income / SV' : 'Cost / SV';
+  const stacks = section.stacks ? section.stacks[principal] : null;
+  const threshold = section.threshold ? section.threshold[principal] : null;
+  const stacksFromBottom = stacks && section.stackFromBottom === 'reverse' ? [...stacks].reverse() : stacks;
+  const items = SECTION_DB[principal][section.key];
   const isAccum = chartFilters.type === 'Accumulative';
   const barColor = PRINCIPAL_COLOR[principal];
   const ratioColor = RATIO_LINE_COLOR[principal];
@@ -211,26 +292,20 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
   const data = useMemo(() => {
     const { startDate, endDate } = chartFilters;
     const [start, end] = startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+    const sumKeys = ['value', 'salesVolume', ...(stacks || []).map(p => p.key)];
     const aggMap = {};
-    sources.flatMap(src => CHART_DB[principal][src]).forEach(item => {
+    items.forEach(item => {
       if ((start && item.dateString < start) || (end && item.dateString > end)) return;
       const key = item.monthKey;
       if (!aggMap[key]) {
-        aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }), value: 0, cost: 0, salesVolume: 0 };
-        (products || []).forEach(p => { aggMap[key][p.key] = 0; });
+        aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }) };
+        sumKeys.forEach(k => { aggMap[key][k] = 0; });
       }
-      aggMap[key].value += item[metricKey];
-      aggMap[key].cost += item.cost;
-      aggMap[key].salesVolume += item.salesVolume;
-      if (products) {
-        const shares = getProductShares(principal, key);
-        products.forEach(p => { aggMap[key][p.key] += item[metricKey] * shares[p.key]; });
-      }
+      sumKeys.forEach(k => { aggMap[key][k] += item[k]; });
     });
     const months = Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
     // Accumulative: setiap bulan = total berjalan dari bulan pertama di rentang filter
     if (isAccum) {
-      const sumKeys = ['value', 'cost', 'salesVolume', ...(products || []).map(p => p.key)];
       const running = Object.fromEntries(sumKeys.map(k => [k, 0]));
       months.forEach(d => {
         sumKeys.forEach(k => { running[k] += d[k]; d[k] = running[k]; });
@@ -238,18 +313,16 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
     }
     return months.map(d => ({
       ...d,
-      // % Cost terhadap Sales Volume, dibatasi maks 3%
-      costRatio: d.salesVolume ? capPct(Number(((d.cost / d.salesVolume) * 100).toFixed(2))) : 0,
+      // % amount terhadap Sales Volume, dibatasi maks 3%
+      ratio: d.salesVolume ? capPct(Number(((d.value / d.salesVolume) * 100).toFixed(2))) : 0,
     }));
-  }, [chartFilters, principal, sources, metricKey, isAccum, products]);
+  }, [chartFilters, items, stacks, isAccum]);
 
   const last = data[data.length - 1];
   const lastVal = last ? last.value : 0;
 
   // MoM & YoY dihitung dari seluruh data (bukan hanya rentang filter), supaya bulan pembanding selalu ada
-  const monthTotal = (monthKey) => sources
-    .flatMap(src => CHART_DB[principal][src])
-    .reduce((sum, item) => (item.monthKey === monthKey ? sum + item[metricKey] : sum), 0);
+  const monthTotal = (monthKey) => items.reduce((sum, item) => (item.monthKey === monthKey ? sum + item.value : sum), 0);
   const shiftMonth = (monthKey, deltaMonths) => {
     const [y, m] = monthKey.split('-').map(Number);
     const d = new Date(y, m - 1 + deltaMonths, 1);
@@ -258,9 +331,7 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
   const pctChange = (base) => (base ? ((lastVal - base) / base) * 100 : null);
   // Accumulative: YoY = rentang tanggal yang sama tahun lalu, MoM = akumulasi s.d. bulan sebelumnya
   const shiftYear = (dateString) => `${Number(dateString.slice(0, 4)) - 1}${dateString.slice(4)}`;
-  const rangeTotal = (from, to) => sources
-    .flatMap(src => CHART_DB[principal][src])
-    .reduce((sum, item) => (item.dateString >= from && item.dateString <= to ? sum + item[metricKey] : sum), 0);
+  const rangeTotal = (from, to) => items.reduce((sum, item) => (item.dateString >= from && item.dateString <= to ? sum + item.value : sum), 0);
   const [rangeStart, rangeEnd] = chartFilters.startDate <= chartFilters.endDate
     ? [chartFilters.startDate, chartFilters.endDate] : [chartFilters.endDate, chartFilters.startDate];
   const yoyBase = !last ? null : isAccum
@@ -274,7 +345,7 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
     { label: 'MoM', pct: pctChange(momBase) },
   ].filter(c => c.pct !== null) : [];
   // Sama seperti Main Dashboard: Cost naik = buruk, Income naik = baik. Hijau selalu ▲, merah selalu ▼
-  const isGoodChange = (pct) => (pct >= 0) === (metricKey === 'income');
+  const isGoodChange = (pct) => (pct >= 0) === isIncome;
   // Label periode: nama bulan lengkap, mis. "November 2026"
   const monthName = (key, opts) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('id-ID', opts);
   const periodLabel = !last ? '-' : isAccum
@@ -285,26 +356,180 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
 
   // Sumbu Y kiri (amount) & kanan (%) masing-masing 5 tick bulat, sejajar dengan grid.
   // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
-
-  const ratios = data.map(d => d.costRatio);
-  const ratioLo = ratios.length ? Math.min(...ratios) : 0;
-  const ratioHi = ratios.length ? Math.max(...ratios) : 3;
+  // Threshold ikut dihitung supaya garisnya selalu masuk rentang sumbu %
+  const ratios = data.map(d => d.ratio);
+  const axisRatios = threshold != null && ratios.length ? [...ratios, threshold] : ratios;
+  const ratioLo = axisRatios.length ? Math.min(...axisRatios) : 0;
+  const ratioHi = axisRatios.length ? Math.max(...axisRatios) : 3;
   const pctTicks = buildPctTicks(ratioLo, ratioHi);
-  const amtTicks = buildAmountTicksBelowLine(data.map(d => d.value), ratios, pctTicks);
+  // Bar dijaga di bawah line terendah (line % atau threshold) di tiap bulan
+  const amtTicks = buildAmountTicksBelowLine(data.map(d => d.value), ratios.map(r => (threshold != null ? Math.min(r, threshold) : r)), pctTicks);
+  const legendItems = [
+    ...(stacks
+      ? stacks.map(p => ({ value: p.label, type: 'square', color: p.color, id: p.key }))
+      : [{ value: `Amount ${metricLabel}`, type: 'square', color: barColor, id: 'value' }]),
+    { value: ratioLabel, type: 'line', color: ratioColor, id: 'ratio' },
+    ...(threshold != null ? [{ value: 'Threshold', type: 'plainline', color: THRESHOLD_COLOR, id: 'threshold', payload: { strokeDasharray: '4 3' } }] : []),
+  ];
+  const chartData = threshold != null ? data.map(d => ({ ...d, threshold })) : data;
 
   return (
     <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[300px] flex flex-col">
       <div className="flex justify-between items-start gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-bold text-slate-700">{title}</p>
-          {/* Sama seperti Dashboard: persentase (line Cost / SV periode terakhir) di samping amount */}
+          <p className="text-[13px] font-bold text-slate-700">{section.title}</p>
+          {/* Sama seperti Dashboard: persentase (line periode terakhir) di samping amount */}
           <div className="flex items-baseline gap-1.5 mt-1">
             <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap">{formatCurrency(lastVal)}</p>
             {last && (
               <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: ratioColor }}>
-                {last.costRatio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%
+                {last.ratio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%
               </span>
             )}
+          </div>
+          <p className="text-[10px] text-slate-400">{periodLabel}</p>
+        </div>
+        {changeItems.length > 0 && (
+          <div className="flex gap-3 text-right shrink-0 pr-3">
+            {changeItems.map(c => (
+              <div key={c.label}>
+                <p className={`text-[13px] font-bold whitespace-nowrap ${isGoodChange(c.pct) ? 'text-emerald-500' : 'text-rose-500'}`}>{isGoodChange(c.pct) ? '▲' : '▼'} {Math.abs(c.pct).toFixed(1)}%</p>
+                <p className="text-[10px] text-slate-400">{c.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 mt-3">
+        {data.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-slate-400 text-[13px] font-medium">
+            Tidak ada data pada rentang tanggal yang dipilih.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
+              <YAxis yAxisId="amt" {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} tickFormatter={formatAxisAmount} />
+              <YAxis yAxisId="pct" orientation="right" {...yAxisBase} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} tickFormatter={formatPctTick} />
+              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} stacks={stacks} ratioLabel={ratioLabel} threshold={threshold} isIncome={isIncome} />} cursor={{ fill: '#f8fafc' }} />
+              {/* Urutan legend: komponen bar, line %, lalu Threshold paling akhir (default Recharts = abjad) */}
+              <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={(item) => {
+                const order = legendItems.map(it => it.value);
+                const i = order.indexOf(item.value);
+                return i === -1 ? order.length : i;
+              }} payload={legendItems} />
+              {stacks ? (
+                <>
+                  {stacksFromBottom.map((p, i, arr) => (
+                    <Bar key={p.key} yAxisId="amt" dataKey={p.key} name={p.label} stackId="stack" fill={p.color} radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
+                  ))}
+                </>
+              ) : (
+                <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              )}
+              <Line yAxisId="pct" type="linear" dataKey="ratio" name={ratioLabel} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
+              {threshold != null && (
+                <Line yAxisId="pct" type="linear" dataKey="threshold" name="Threshold" stroke={THRESHOLD_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// BILLING (khusus Category = Cost): jumlah billing Cost per bulan (Interchange Fee + Service Fee).
+// Visual sama dengan grid Interchange Fee: bar tunggal warna principal + YoY / MoM. Data jumlah billing masih dummy.
+// ==========================================
+// Threshold jumlah billing per bulan — DUMMY, silakan ganti sesuai ketentuan (batas MAKSIMAL, seperti Cost).
+// Accumulative: threshold ikut diakumulasi (threshold bulanan x jumlah bulan berjalan).
+const BILLING_THRESHOLD = { Visa: 150, Mastercard: 150 };
+const BILLING_ITEMS = Object.fromEntries(CHART_PRINCIPALS.map(p => [p, [...CHART_DB[p].interchange, ...CHART_DB[p].serviceFee]]));
+
+const BillingCountTooltip = ({ active, payload, label, barColor, isAccum }) => {
+  if (!active || !payload || payload.length === 0) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="bg-white/95 border border-slate-200 rounded-xl shadow-md px-3 py-2 text-[12px]">
+      <p className="font-bold text-slate-800 mb-1">{label}</p>
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: barColor }}></div>
+        <span className="text-slate-600 font-medium">Jumlah Billing{isAccum ? ' (Accumulative)' : ''}:</span>
+        <span className="font-bold text-slate-800">{row.value.toLocaleString('id-ID')}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 border-t-2 border-dashed" style={{ borderColor: THRESHOLD_COLOR }}></div>
+        <span className="text-slate-600 font-medium">Threshold:</span>
+        <span className="font-bold text-slate-800">{row.threshold.toLocaleString('id-ID')}</span>
+        {row.value > row.threshold && <span className="font-semibold" style={{ color: THRESHOLD_COLOR }}>(melebihi)</span>}
+      </div>
+    </div>
+  );
+};
+
+const BillingCountChart = ({ principal, chartFilters }) => {
+  const items = BILLING_ITEMS[principal];
+  const isAccum = chartFilters.type === 'Accumulative';
+  const barColor = PRINCIPAL_COLOR[principal];
+  const [rangeStart, rangeEnd] = chartFilters.startDate <= chartFilters.endDate
+    ? [chartFilters.startDate, chartFilters.endDate] : [chartFilters.endDate, chartFilters.startDate];
+
+  const data = useMemo(() => {
+    const aggMap = {};
+    items.forEach(item => {
+      if ((rangeStart && item.dateString < rangeStart) || (rangeEnd && item.dateString > rangeEnd)) return;
+      const key = item.monthKey;
+      if (!aggMap[key]) aggMap[key] = { sortKey: key, name: item.date.toLocaleDateString('id-ID', { month: 'short' }), value: 0 };
+      aggMap[key].value += item.billingCost;
+    });
+    const months = Object.values(aggMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    if (isAccum) {
+      let running = 0;
+      months.forEach(d => { running += d.value; d.value = running; });
+    }
+    const monthly = BILLING_THRESHOLD[principal];
+    return months.map((d, i) => ({ ...d, threshold: isAccum ? monthly * (i + 1) : monthly }));
+  }, [items, rangeStart, rangeEnd, isAccum, principal]);
+
+  const last = data[data.length - 1];
+  const lastVal = last ? last.value : 0;
+
+  // YoY & MoM (sama dengan grid Interchange Fee): dihitung dari seluruh data
+  const monthTotal = (monthKey) => items.reduce((sum, item) => (item.monthKey === monthKey ? sum + item.billingCost : sum), 0);
+  const shiftMonth = (monthKey, deltaMonths) => {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m - 1 + deltaMonths, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const shiftYear = (dateString) => `${Number(dateString.slice(0, 4)) - 1}${dateString.slice(4)}`;
+  const rangeTotal = (from, to) => items.reduce((sum, item) => (item.dateString >= from && item.dateString <= to ? sum + item.billingCost : sum), 0);
+  const pctChange = (base) => (base ? ((lastVal - base) / base) * 100 : null);
+  const yoyBase = !last ? null : isAccum ? rangeTotal(shiftYear(rangeStart), shiftYear(rangeEnd)) : monthTotal(shiftMonth(last.sortKey, -12));
+  const momBase = !last ? null : isAccum ? (data.length > 1 ? data[data.length - 2].value : null) : monthTotal(shiftMonth(last.sortKey, -1));
+  const changeItems = last ? [
+    { label: 'YoY', pct: pctChange(yoyBase) },
+    { label: 'MoM', pct: pctChange(momBase) },
+  ].filter(c => c.pct !== null) : [];
+  // Billing termasuk Cost: naik = buruk (merah ▼), turun = baik (hijau ▲), sama dengan Interchange Fee
+  const isGoodChange = (pct) => pct < 0;
+
+  const monthName = (key, opts) => new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString('id-ID', opts);
+  const periodLabel = !last ? '-' : isAccum
+    ? (data[0].sortKey === last.sortKey ? monthName(last.sortKey, { month: 'long', year: 'numeric' })
+      : `${monthName(data[0].sortKey, data[0].sortKey.slice(0, 4) === last.sortKey.slice(0, 4) ? { month: 'long' } : { month: 'long', year: 'numeric' })} – ${monthName(last.sortKey, { month: 'long', year: 'numeric' })}`)
+    : monthName(last.sortKey, { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[300px] flex flex-col">
+      <div className="flex justify-between items-start gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold text-slate-700">Billing</p>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <p className="text-[20px] font-bold text-[#0f172a] leading-tight whitespace-nowrap">{lastVal.toLocaleString('id-ID')}</p>
+            <span className="text-[12px] font-semibold text-slate-400 whitespace-nowrap">billing</span>
           </div>
           <p className="text-[10px] text-slate-400">{periodLabel}</p>
         </div>
@@ -329,28 +554,14 @@ const SimpleFeeChart = ({ principal, title, sources, chartFilters, byProduct }) 
             <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 4 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
-              <YAxis yAxisId="amt" {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} tickFormatter={formatAxisAmount} />
-              <YAxis yAxisId="pct" orientation="right" {...yAxisBase} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} tickFormatter={formatPctTick} />
-              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} products={products} />} cursor={{ fill: '#f8fafc' }} />
-              {products ? (
-                <>
-                  {/* Urutan legend: produk (sesuai urutan tumpukan) lalu Cost / SV paling akhir (default Recharts = abjad) */}
-                  <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={(item) => {
-                    const order = [...products.map(p => p.label), 'Cost / SV'];
-                    const i = order.indexOf(item.value);
-                    return i === -1 ? order.length : i;
-                  }} payload={[
-                    ...products.map(p => ({ value: p.label, type: 'square', color: p.color, id: p.key })),
-                    { value: 'Cost / SV', type: 'line', color: ratioColor, id: 'costRatio' },
-                  ]} />
-                  {products.map((p, i, arr) => (
-                    <Bar key={p.key} yAxisId="amt" dataKey={p.key} name={p.label} stackId="product" fill={p.color} radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
-                  ))}
-                </>
-              ) : (
-                <Bar yAxisId="amt" dataKey="value" name={`Amount ${metricLabel}`} fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
-              )}
-              <Line yAxisId="pct" type="linear" dataKey="costRatio" name="Cost / SV" stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
+              <YAxis {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} allowDecimals={false} tickFormatter={(v) => v.toLocaleString('id-ID')} />
+              <Tooltip content={<BillingCountTooltip barColor={barColor} isAccum={isAccum} />} cursor={{ fill: '#f8fafc' }} />
+              <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} payload={[
+                { value: 'Jumlah Billing', type: 'square', color: barColor, id: 'value' },
+                { value: 'Threshold', type: 'plainline', color: THRESHOLD_COLOR, id: 'threshold', payload: { strokeDasharray: '4 3' } },
+              ]} />
+              <Bar dataKey="value" name="Jumlah Billing" fill={barColor} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+              <Line type="linear" dataKey="threshold" name="Threshold" stroke={THRESHOLD_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} />
             </ComposedChart>
           </ResponsiveContainer>
         )}
@@ -459,6 +670,9 @@ const DetailCost = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const handleLogout = () => alert("Logout berhasil!");
+  const isIncomeView = chartFilters.view === 'Income';
+  const sections = SECTIONS_BY_VIEW[chartFilters.view] || COST_SECTIONS;
+  const isCostView = chartFilters.view === 'Cost';
 
 
   // ==========================================
@@ -598,25 +812,27 @@ const DetailCost = () => {
           {/* SECTION 2: LINE CHART PER PRINCIPAL (kiri Visa, kanan Mastercard; Interchange Fee, Service Fee, Summary, Top/New Billing) */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-8">
             {CHART_PRINCIPALS.map(principal => (
-              <div key={principal} className="flex flex-col gap-5 min-w-0 xl:grid xl:grid-rows-subgrid" style={{ gridRow: `span ${3 + CHART_SECTIONS.length}` }}>
+              <div key={principal} className="flex flex-col gap-5 min-w-0 xl:grid xl:grid-rows-subgrid" style={{ gridRow: `span ${(isIncomeView ? 1 : 3) + sections.length + (isCostView ? 1 : 0)}` }}>
                 <h2 className="text-[16px] font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: principal === 'Visa' ? '#1e3a8a' : '#ea580c' }}></span>
                   {principal}
                 </h2>
 
-                {CHART_SECTIONS.map(section => {
-                  return (
-                    <SimpleFeeChart
-                      key={section.key}
-                      principal={principal}
-                      title={section.title}
-                      sources={section.sources}
-                      byProduct={section.byProduct}
-                      chartFilters={chartFilters}
-                    />
-                  );
-                })}
+                {/* Category Income -> grid versi Income, selain itu -> grid versi Cost */}
+                {sections.map(section => (
+                  <SimpleFeeChart
+                    key={section.key}
+                    principal={principal}
+                    section={section}
+                    chartFilters={chartFilters}
+                  />
+                ))}
 
+                {/* Category Cost: Grafik Billing di bawah Service Fee */}
+                {isCostView && <BillingCountChart principal={principal} chartFilters={chartFilters} />}
+
+                {/* Category Income: Summary, Top Billing & New Billing disembunyikan */}
+                {!isIncomeView && (<>
                 {/* Summary (di tengah, setelah chart Service Fee): Total Cost, Interchange Fee, Service Fee + New | Existing */}
                 <BillingSummaryCard principal={principal} summary={BILLING_SUMMARY[principal]} />
 
@@ -639,6 +855,7 @@ const DetailCost = () => {
                     onOpen={() => navigate('/detail-billing', { state: { filters: { principal, billing: 'New Billing' } } })}
                   />
                 </div>
+                </>)}
               </div>
             ))}
           </div>

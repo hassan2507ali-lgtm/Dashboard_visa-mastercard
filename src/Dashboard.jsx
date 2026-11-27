@@ -55,7 +55,13 @@ const STACK_CONFIG = {
     { field: 'costInterchange', label: 'Interchange Fee', color: 0 },
   ],
 };
-const STACK_FIELDS = [...STACK_CONFIG.income, ...STACK_CONFIG.cost].map(c => c.field);
+// Urutan tumpukan bar dari bawah ke atas (legend tetap mengikuti STACK_CONFIG).
+// Income: Kurs (layer 1, bawah) -> MDR (layer 2) -> Interchange Fee & ATM (layer 3, atas)
+const STACK_FROM_BOTTOM = {
+  income: [...STACK_CONFIG.income].reverse(),
+  cost: STACK_CONFIG.cost,
+};
+const STACK_FIELDS =[...STACK_CONFIG.income, ...STACK_CONFIG.cost].map(c => c.field);
 const STACK_COLORS = {
   Visa: ['#06b6d4', '#6366f1', '#1e3a8a'],        // cyan, indigo, navy
 };
@@ -746,7 +752,7 @@ const Dashboard = () => {
                                   {metric.stacked ? (
                                     <>
                                       <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={legendOrder(metric.key)} />
-                                      {STACK_CONFIG[metric.key].map((c, i, arr) => (
+                                      {STACK_FROM_BOTTOM[metric.key].map((c, i, arr) => (
                                         <Bar key={c.field} yAxisId="val" dataKey={c.field} name={c.label} stackId={metric.key} fill={STACK_COLORS[principalName][c.color]} radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0} />
                                       ))}
                                     </>

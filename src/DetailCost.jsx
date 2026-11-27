@@ -169,22 +169,23 @@ const withIncomeComponents = (sections) => ({
 });
 const SECTION_DB = Object.fromEntries(CHART_PRINCIPALS.map(p => [p, withIncomeComponents(buildSectionItems(p))]));
 
-// Threshold per grid (% terhadap Sales Volume) — DUMMY, silakan ganti sesuai ketentuan.
-// Cost  : batas MAKSIMAL (line % di atas threshold = melebihi batas).
-// Income: target MINIMAL (line % di bawah threshold = di bawah target).
+// Threshold per grid (AMOUNT Rupiah per bulan, dibandingkan dengan bar amount) — DUMMY, silakan ganti sesuai ketentuan.
+// Cost  : batas MAKSIMAL (amount di atas threshold = melebihi batas).
+// Income: target MINIMAL (amount di bawah threshold = di bawah target).
+// Accumulative: threshold ikut diakumulasi (threshold bulanan x jumlah bulan berjalan).
 const THRESHOLD_COLOR = '#ef4444';
 // Grid per Category. Visual sama (grid 1 = bar tunggal, grid 2 = bar stacked), hanya data & teks yang berganti.
 // stacks: komponen bar (urutan legend); stackFromBottom: urutan tumpukan dari bawah.
 const COST_SECTIONS = [
-  { key: 'interchangeFee', title: 'Interchange Fee', threshold: { Visa: 1.5, Mastercard: 2.2 } },
-  { key: 'serviceFee', title: 'Service Fee', stacks: SERVICE_FEE_PRODUCTS, threshold: { Visa: 0.6, Mastercard: 2.2 } },
+  { key: 'interchangeFee', title: 'Interchange Fee', threshold: { Visa: 110e9, Mastercard: 80e9 } },
+  { key: 'serviceFee', title: 'Service Fee', stacks: SERVICE_FEE_PRODUCTS, threshold: { Visa: 40e9, Mastercard: 80e9 } },
 ];
 const INCOME_SECTIONS = [
-  // Income tidak memakai threshold. 3 grid per principal: Interchange Fee & ATM, MDR, Selisih Kurs
+  // 3 grid per principal: Interchange Fee & ATM, MDR, Selisih Kurs. Threshold Income = target MINIMAL (amount).
   // (MDR & Selisih Kurs masih dummy, relatif terhadap Interchange Income)
-  { key: 'incomeInterchange', title: 'Interchange Fee & ATM', isIncome: true },
-  { key: 'incomeMdr', title: 'MDR', isIncome: true },
-  { key: 'incomeKurs', title: 'Selisih Kurs', isIncome: true },
+  { key: 'incomeInterchange', title: 'Interchange Fee & ATM', isIncome: true, threshold: { Visa: 35e9, Mastercard: 70e9 } },
+  { key: 'incomeMdr', title: 'MDR', isIncome: true, threshold: { Visa: 10e9, Mastercard: 22e9 } },
+  { key: 'incomeKurs', title: 'Selisih Kurs', isIncome: true, threshold: { Visa: 13e9, Mastercard: 28e9 } },
 ];
 // All = semua grid (Cost lalu Income)
 const SECTIONS_BY_VIEW = { All: [...COST_SECTIONS, ...INCOME_SECTIONS], Cost: COST_SECTIONS, Income: INCOME_SECTIONS };
@@ -233,7 +234,7 @@ const formatAxisAmount = (v) => {
 const RATIO_LINE_COLOR = { Visa: '#f59e0b', Mastercard: '#0f766e' };
 
 // Pop up: bar = amount (+ rincian komponen), line = % (Cost / SV atau Income / SV)
-const SimpleTooltip = ({ active, payload, label, metricLabel, stacks, ratioLabel, threshold, isIncome }) => {
+const SimpleTooltip = ({ active, payload, label, metricLabel, stacks, ratioLabel, isIncome }) => {
   if (!active || !payload || payload.length === 0) return null;
   const row = payload[0].payload;
   const barColor = stacks ? stacks[0].color : payload.find(p => p.dataKey === 'value')?.color;
@@ -259,13 +260,13 @@ const SimpleTooltip = ({ active, payload, label, metricLabel, stacks, ratioLabel
         <span className="text-slate-600 font-medium">{ratioLabel}:</span>
         <span className="font-bold text-slate-800">{row.ratio.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
       </div>
-      {threshold != null && (
+      {row.threshold != null && (
         <div className="flex items-center gap-2">
           <div className="w-2.5 border-t-2 border-dashed" style={{ borderColor: THRESHOLD_COLOR }}></div>
           <span className="text-slate-600 font-medium">Threshold:</span>
-          <span className="font-bold text-slate-800">{threshold.toLocaleString('id-ID', { maximumFractionDigits: 2 })}%</span>
+          <span className="font-bold text-slate-800">{formatCurrency(row.threshold)}</span>
           {/* Cost di atas batas / Income di bawah target -> diberi tanda merah */}
-          {(isIncome ? row.ratio < threshold : row.ratio > threshold) && (
+          {(isIncome ? row.value < row.threshold : row.value > row.threshold) && (
             <span className="font-semibold" style={{ color: THRESHOLD_COLOR }}>{isIncome ? '(di bawah target)' : '(melebihi)'}</span>
           )}
         </div>
@@ -356,14 +357,14 @@ const SimpleFeeChart = ({ principal, section, chartFilters }) => {
 
   // Sumbu Y kiri (amount) & kanan (%) masing-masing 5 tick bulat, sejajar dengan grid.
   // Bar maks ~50% tinggi chart, line % diusahakan di pita atas supaya tidak bertumpuk.
-  // Threshold ikut dihitung supaya garisnya selalu masuk rentang sumbu %
+  // Threshold (amount) ikut sumbu amount kiri; Accumulative = threshold bulanan x jumlah bulan berjalan
+  const chartData = threshold != null ? data.map((d, i) => ({ ...d, threshold: isAccum ? threshold * (i + 1) : threshold })) : data;
   const ratios = data.map(d => d.ratio);
-  const axisRatios = threshold != null && ratios.length ? [...ratios, threshold] : ratios;
-  const ratioLo = axisRatios.length ? Math.min(...axisRatios) : 0;
-  const ratioHi = axisRatios.length ? Math.max(...axisRatios) : 3;
+  const ratioLo = ratios.length ? Math.min(...ratios) : 0;
+  const ratioHi = ratios.length ? Math.max(...ratios) : 3;
   const pctTicks = buildPctTicks(ratioLo, ratioHi);
-  // Bar dijaga di bawah line terendah (line % atau threshold) di tiap bulan
-  const amtTicks = buildAmountTicksBelowLine(data.map(d => d.value), ratios.map(r => (threshold != null ? Math.min(r, threshold) : r)), pctTicks);
+  // Bar & garis threshold dijaga di bawah line % di tiap bulan (threshold selalu masuk rentang sumbu amount)
+  const amtTicks = buildAmountTicksBelowLine(chartData.map(d => (d.threshold != null ? Math.max(d.value, d.threshold) : d.value)), ratios, pctTicks);
   const legendItems = [
     ...(stacks
       ? stacks.map(p => ({ value: p.label, type: 'square', color: p.color, id: p.key }))
@@ -371,7 +372,6 @@ const SimpleFeeChart = ({ principal, section, chartFilters }) => {
     { value: ratioLabel, type: 'line', color: ratioColor, id: 'ratio' },
     ...(threshold != null ? [{ value: 'Threshold', type: 'plainline', color: THRESHOLD_COLOR, id: 'threshold', payload: { strokeDasharray: '4 3' } }] : []),
   ];
-  const chartData = threshold != null ? data.map(d => ({ ...d, threshold })) : data;
 
   return (
     <div className="w-full bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200/60 h-[300px] flex flex-col">
@@ -412,7 +412,7 @@ const SimpleFeeChart = ({ principal, section, chartFilters }) => {
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={5} interval="preserveStartEnd" />
               <YAxis yAxisId="amt" {...yAxisBase} tick={{ fontSize: 10, fill: '#64748b' }} width={52} domain={[0, amtTicks[AXIS_INTERVALS]]} ticks={amtTicks} tickFormatter={formatAxisAmount} />
               <YAxis yAxisId="pct" orientation="right" {...yAxisBase} tick={{ fontSize: 10, fill: ratioColor, fontWeight: 600 }} width={44} domain={[pctTicks[0], pctTicks[AXIS_INTERVALS]]} ticks={pctTicks} tickFormatter={formatPctTick} />
-              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} stacks={stacks} ratioLabel={ratioLabel} threshold={threshold} isIncome={isIncome} />} cursor={{ fill: '#f8fafc' }} />
+              <Tooltip content={<SimpleTooltip metricLabel={isAccum ? `${metricLabel} (Accumulative)` : metricLabel} stacks={stacks} ratioLabel={ratioLabel} isIncome={isIncome} />} cursor={{ fill: '#f8fafc' }} />
               {/* Urutan legend: komponen bar, line %, lalu Threshold paling akhir (default Recharts = abjad) */}
               <Legend iconSize={8} wrapperStyle={{ fontSize: 10 }} itemSorter={(item) => {
                 const order = legendItems.map(it => it.value);
@@ -430,7 +430,7 @@ const SimpleFeeChart = ({ principal, section, chartFilters }) => {
               )}
               <Line yAxisId="pct" type="linear" dataKey="ratio" name={ratioLabel} stroke={ratioColor} strokeWidth={2} dot={{ r: data.length > 15 ? 1.5 : 3, fill: ratioColor, strokeWidth: 0 }} activeDot={{ r: 4 }} isAnimationActive={false} />
               {threshold != null && (
-                <Line yAxisId="pct" type="linear" dataKey="threshold" name="Threshold" stroke={THRESHOLD_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} />
+                <Line yAxisId="amt" type="linear" dataKey="threshold" name="Threshold" stroke={THRESHOLD_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} activeDot={false} isAnimationActive={false} />
               )}
             </ComposedChart>
           </ResponsiveContainer>
